@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SBI Wx — Marine Forecast</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:        #0d0f1a;
+  --bg2:       #141828;
+  --bg3:       #1c2038;
+  --border:    rgba(160,120,220,0.15);
+  --border2:   rgba(160,120,220,0.28);
+  --text:      #dde4f5;
+  --text2:     #8a96c8;
+  --text3:     #4a5078;
+  --aqua:      #4ecdc4;
+  --aqua-dim:  #2a8c86;
+  --pink:      #d46fa0;
+  --pink-dim:  #7a3a5a;
+  --yellow:    #e8c84a;
+  --yellow-dim:#7a6420;
+  --lavender:  #9b87d4;
+  --lavender-dim:#4a3a8a;
+  --go:        #1a5a40;  --go-text:   #4ecdc4;
+  --maybe:     #5a4a10;  --maybe-text:#e8c84a;
+  --nogo:      #5a1a3a;  --nogo-text: #d46fa0;
+  --mono: 'Space Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; }
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image: linear-gradient(rgba(78,205,196,0.03) 1px,transparent 1px),
+                    linear-gradient(90deg,rgba(78,205,196,0.03) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+.app { max-width:880px; margin:0 auto; padding:28px 20px 60px; position:relative; z-index:1; }
+
+/* Header */
+.header { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border2); }
+.header-left h1 { font-family:var(--mono); font-size:24px; font-weight:700; letter-spacing:2px;
+  background:linear-gradient(90deg,var(--aqua),var(--lavender),var(--pink));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.header-left p { font-size:11px; color:var(--text3); margin-top:5px; letter-spacing:.12em; text-transform:uppercase; }
+.header-right { font-family:var(--mono); font-size:10px; color:var(--text3); text-align:right; line-height:2; }
+.buoy-active { color:var(--aqua) !important; }
+
+/* Warning banner */
+.warn-banner { display:none; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:12px; font-weight:500; border-left:3px solid; line-height:1.5; }
+.warn-banner.sca   { display:block; background:rgba(232,200,74,.1);  border-color:rgba(232,200,74,.5);  color:var(--yellow); }
+.warn-banner.gale  { display:block; background:rgba(212,111,160,.1); border-color:rgba(212,111,160,.5); color:var(--pink); }
+.warn-banner.storm { display:block; background:rgba(180,80,80,.12);  border-color:rgba(220,80,80,.6);   color:#e07070; }
+.warn-label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; opacity:.75; display:block; margin-bottom:2px; }
+
+/* Tabs */
+.tabs { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
+.tab { padding:7px 18px; border-radius:22px; border:1px solid var(--border2); font-size:13px; font-weight:500; cursor:pointer; background:transparent; color:var(--text2); transition:all .15s; font-family:var(--sans); }
+.tab:hover { border-color:var(--aqua-dim); color:var(--aqua); }
+.tab.active { background:linear-gradient(135deg,var(--aqua-dim),var(--lavender-dim)); color:var(--text); border-color:var(--aqua-dim); }
+
+/* Hero */
+.hero { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.stars { font-size:22px; letter-spacing:3px; line-height:1; }
+.badge { padding:5px 16px; border-radius:6px; font-size:11px; font-weight:700; letter-spacing:.12em; font-family:var(--mono); }
+.badge.go    { background:var(--go);    color:var(--go-text); }
+.badge.maybe { background:var(--maybe); color:var(--maybe-text); }
+.badge.nogo  { background:var(--nogo);  color:var(--nogo-text); }
+
+/* Wave face + spot wind row */
+.conditions-row { display:flex; gap:8px; margin-bottom:14px; }
+.wave-est { background:linear-gradient(135deg,rgba(78,205,196,.06),rgba(155,135,212,.06)); border:1px solid var(--border2); border-radius:10px; padding:12px 16px; flex:2; display:flex; align-items:center; gap:14px; }
+.wave-est-ht { font-family:var(--mono); font-size:28px; font-weight:700; white-space:nowrap;
+  background:linear-gradient(90deg,var(--aqua),var(--lavender)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.wave-est-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px; }
+.wave-est-desc { font-size:12px; color:var(--text2); line-height:1.6; }
+.spot-wind-tile { background:linear-gradient(135deg,rgba(232,200,74,.06),rgba(155,135,212,.04)); border:1px solid var(--border2); border-radius:10px; padding:12px 16px; flex:1; display:flex; flex-direction:column; justify-content:center; }
+.spot-wind-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px; }
+.spot-wind-val { font-family:var(--mono); font-size:22px; font-weight:700; color:var(--yellow); }
+.spot-wind-dir { font-size:11px; color:var(--text2); margin-top:2px; }
+
+/* Swell detail */
+.swell-detail { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.swell-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+.swell-card.primary { border-color:rgba(78,205,196,.3); }
+.swell-card.secondary { border-color:rgba(155,135,212,.25); opacity:.85; }
+.swell-card-label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; font-family:var(--mono); }
+.swell-card.primary .swell-card-label { color:var(--aqua-dim); }
+.swell-card.secondary .swell-card-label { color:var(--lavender-dim); }
+.swell-row { display:flex; gap:14px; flex-wrap:wrap; }
+.swell-stat-val { font-family:var(--mono); font-size:16px; font-weight:700; }
+.swell-card.primary .swell-stat-val { color:var(--aqua); }
+.swell-card.secondary .swell-stat-val { color:var(--lavender); }
+.swell-stat-lbl { font-size:10px; color:var(--text3); margin-top:1px; }
+
+/* Wind breakdown */
+.wind-section { margin-bottom:14px; }
+.wind-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text3); margin-bottom:8px; }
+.wind-periods { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+.wind-period { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; text-align:center; }
+.wind-period-name { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+.wind-period-val { font-family:var(--mono); font-size:14px; font-weight:700; color:var(--yellow); }
+.wind-period-dir { font-size:10px; color:var(--text2); margin-top:2px; }
+
+/* Day warning note */
+.day-warn-note { font-size:11px; color:var(--text3); font-style:italic; padding:6px 0 12px; }
+
+/* 7-day */
+.days-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text3); margin-bottom:8px; }
+.seven-day { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-bottom:20px; }
+.day-card { background:var(--bg2); border:1px solid var(--border); border-radius:9px; padding:9px 4px; text-align:center; cursor:pointer; transition:all .15s; }
+.day-card:hover { border-color:var(--aqua-dim); }
+.day-card.selected { border-color:var(--aqua-dim); background:rgba(78,205,196,.06); }
+.day-name { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text3); margin-bottom:4px; }
+.day-ht { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--aqua); }
+.day-ht span { font-size:9px; color:var(--text3); }
+.day-wind { font-size:9px; color:var(--yellow); margin-top:2px; }
+.day-warn-chip { font-size:9px; margin-top:2px; }
+.day-warn-chip.sca   { color:var(--yellow); }
+.day-warn-chip.gale  { color:var(--pink); }
+.day-warn-chip.storm { color:#e07070; }
+.day-dot { width:7px; height:7px; border-radius:50%; margin:5px auto 0; }
+.day-dot.go    { background:var(--aqua); }
+.day-dot.maybe { background:var(--yellow); }
+.day-dot.nogo  { background:var(--pink); }
+
+/* Chart */
+.chart-wrap { margin-bottom:24px; }
+.chart-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text3); margin-bottom:10px; }
+.chart-container { position:relative; height:150px; }
+
+/* Buoy ref */
+.buoy-ref { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:20px; }
+.buoy-ref-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text3); margin-bottom:10px; }
+.buoy-row { display:flex; align-items:flex-start; gap:12px; padding:9px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.buoy-row:last-child { border-bottom:none; padding-bottom:0; }
+.buoy-id { font-family:var(--mono); font-size:11px; color:var(--aqua); min-width:50px; font-weight:700; }
+.buoy-id.offline { color:var(--text3); text-decoration:line-through; }
+.buoy-name { color:var(--text); font-weight:500; }
+.buoy-desc { color:var(--text3); font-size:11px; margin-top:2px; }
+.buoy-note { font-size:10px; color:var(--text3); margin-top:2px; font-style:italic; }
+
+/* Sessions */
+.sessions { margin-bottom:20px; }
+.sessions-toggle { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.08em; cursor:pointer; user-select:none; padding:10px 0; border-top:1px solid var(--border); }
+.sessions-toggle:hover { color:var(--lavender); }
+.session-item { display:flex; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); align-items:flex-start; }
+.session-date { font-family:var(--mono); font-size:10px; color:var(--text3); min-width:90px; flex-shrink:0; padding-top:1px; }
+.session-tag { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--bg3); color:var(--lavender); flex-shrink:0; font-family:var(--mono); }
+.session-desc { font-size:11px; color:var(--text2); line-height:1.5; }
+
+/* Footer */
+footer { display:flex; justify-content:space-between; align-items:center; padding-top:14px; border-top:1px solid var(--border); font-size:10px; color:var(--text3); font-family:var(--mono); flex-wrap:wrap; gap:8px; }
+.refresh-btn { background:none; border:1px solid var(--border2); color:var(--text3); cursor:pointer; font-size:11px; font-family:var(--mono); padding:5px 12px; border-radius:5px; transition:all .15s; }
+.refresh-btn:hover { border-color:var(--aqua-dim); color:var(--aqua); }
+
+/* Error */
+.err { background:rgba(212,111,160,.08); border:1px solid rgba(212,111,160,.2); border-radius:8px; padding:14px 16px; font-size:13px; color:var(--pink); line-height:1.6; }
+
+@media(max-width:560px){
+  /* Header */
+  .header{flex-direction:column;align-items:flex-start;gap:8px;}
+  .header-left h1{font-size:20px;}
+  .header-right{text-align:left; font-size:9px; line-height:1.7; max-width:100%; overflow:hidden;}
+  .header-right span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; display:block;}
+
+  /* Tabs */
+  .tabs{gap:5px;}
+  .tab{padding:6px 13px; font-size:12px;}
+
+  /* Hero */
+  .stars{font-size:19px; letter-spacing:2px;}
+
+  /* Conditions row */
+  .conditions-row{flex-direction:column;}
+  .wave-est{padding:10px 13px;}
+  .wave-est-ht{font-size:24px;}
+  .wave-est-desc{font-size:11px;}
+  .spot-wind-tile{padding:10px 13px;}
+  .spot-wind-val{font-size:18px;}
+
+  /* Swell detail */
+  .swell-detail{grid-template-columns:1fr;}
+  .swell-stat-val{font-size:15px;}
+
+  /* Wind sections */
+  .wind-periods{gap:4px;}
+  .wind-period{padding:8px 6px;}
+  .wind-period-val{font-size:13px;}
+
+  /* 7-day strip */
+  .seven-day{gap:3px;}
+  .day-card{padding:7px 2px;}
+  .day-name,.day-wind,.day-warn-chip{font-size:8px;}
+  .day-ht{font-size:11px;}
+
+  /* Session log */
+  .session-item{flex-wrap:wrap; gap:4px;}
+  .session-date{min-width:unset; width:100%;}
+  .session-desc{font-size:11px;}
+
+  /* Footer */
+  footer{flex-direction:column; align-items:flex-start; gap:6px;}
+  footer span{font-size:9px; line-height:1.6;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="header-left">
+      <h1>SBI WX</h1>
+      <p>Marmetta · Yellow Banks · Chinese Harbor</p>
+    </div>
+    <div class="header-right">
+      <span id="buoy-46251">46251 SCI Basin · —</span>
+      <span id="buoy-46053">46053 E. SB Channel · —</span>
+      <span id="upd-time">Initializing...</span>
+    </div>
+  </div>
+
+  <div class="warn-banner" id="warn-banner">
+    <span class="warn-label" id="warn-type-label">NWS MARINE WARNING · PZZ650</span>
+    <span id="warn-text"></span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="selectSpot('marmetta',this)">Marmetta</button>
+    <button class="tab" onclick="selectSpot('yellowbanks',this)">Yellow Banks</button>
+    <button class="tab" onclick="selectSpot('chinese',this)">Chinese Harbor</button>
+  </div>
+
+  <div class="hero">
+    <div class="stars" id="hero-stars">☆☆☆☆☆</div>
+    <div class="badge maybe" id="hero-badge">Loading</div>
+  </div>
+
+  <div class="conditions-row">
+    <div class="wave-est">
+      <div>
+        <div class="wave-est-label">Est. Wave Face</div>
+        <div class="wave-est-ht" id="wave-face">—</div>
+      </div>
+      <div class="wave-est-desc" id="wave-face-desc">Calculating...</div>
+    </div>
+    <div class="spot-wind-tile">
+      <div class="spot-wind-label">Spot Wind</div>
+      <div class="spot-wind-val" id="spot-wind-val">—</div>
+      <div class="spot-wind-dir" id="spot-wind-dir">—</div>
+    </div>
+  </div>
+
+  <div class="swell-detail">
+    <div class="swell-card primary">
+      <div class="swell-card-label">Primary Swell</div>
+      <div class="swell-row">
+        <div class="swell-stat"><div class="swell-stat-val" id="s1-ht">—</div><div class="swell-stat-lbl">height ft</div></div>
+        <div class="swell-stat"><div class="swell-stat-val" id="s1-per">—</div><div class="swell-stat-lbl">period s</div></div>
+        <div class="swell-stat"><div class="swell-stat-val" id="s1-dir">—</div><div class="swell-stat-lbl">direction</div></div>
+      </div>
+    </div>
+    <div class="swell-card secondary">
+      <div class="swell-card-label">Secondary Swell</div>
+      <div class="swell-row">
+        <div class="swell-stat"><div class="swell-stat-val" id="s2-ht">—</div><div class="swell-stat-lbl">height ft</div></div>
+        <div class="swell-stat"><div class="swell-stat-val" id="s2-per">—</div><div class="swell-stat-lbl">period s</div></div>
+        <div class="swell-stat"><div class="swell-stat-val" id="s2-dir">—</div><div class="swell-stat-lbl">direction</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wind-section">
+    <div class="wind-title">Channel Wind <span style="color:var(--text3);font-weight:400;letter-spacing:0">— open water, uncorrected</span></div>
+    <div class="wind-periods">
+      <div class="wind-period">
+        <div class="wind-period-name">Morning</div>
+        <div class="wind-period-val" id="w-morn">—</div>
+        <div class="wind-period-dir" id="w-morn-dir">—</div>
+      </div>
+      <div class="wind-period">
+        <div class="wind-period-name">Afternoon</div>
+        <div class="wind-period-val" id="w-aftn">—</div>
+        <div class="wind-period-dir" id="w-aftn-dir">—</div>
+      </div>
+      <div class="wind-period">
+        <div class="wind-period-name">Night</div>
+        <div class="wind-period-val" id="w-night">—</div>
+        <div class="wind-period-dir" id="w-night-dir">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wind-section">
+    <div class="wind-title">Spot Wind <span style="color:var(--aqua-dim);font-weight:400;letter-spacing:0" id="spot-wind-label">— terrain-corrected</span></div>
+    <div class="wind-periods">
+      <div class="wind-period">
+        <div class="wind-period-name">Morning</div>
+        <div class="wind-period-val" id="sw-morn">—</div>
+        <div class="wind-period-dir" id="sw-morn-dir">—</div>
+      </div>
+      <div class="wind-period">
+        <div class="wind-period-name">Afternoon</div>
+        <div class="wind-period-val" id="sw-aftn">—</div>
+        <div class="wind-period-dir" id="sw-aftn-dir">—</div>
+      </div>
+      <div class="wind-period">
+        <div class="wind-period-name">Night</div>
+        <div class="wind-period-val" id="sw-night">—</div>
+        <div class="wind-period-dir" id="sw-night-dir">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="day-warn-note" id="day-warn-note"></div>
+
+  <div class="days-label">7-Day Outlook</div>
+  <div class="seven-day" id="seven-day"></div>
+
+  <div class="chart-wrap">
+    <div class="chart-label">Est. Wave Face Forecast</div>
+    <div class="chart-container">
+      <canvas id="swellChart" role="img" aria-label="7-day estimated wave face forecast"></canvas>
+    </div>
+  </div>
+
+  <div class="buoy-ref">
+    <div class="buoy-ref-title">Buoy Reference</div>
+    <div class="buoy-row">
+      <div><div class="buoy-id">46251</div></div>
+      <div>
+        <div class="buoy-name">Santa Cruz Basin</div>
+        <div class="buoy-desc">33.769°N 119.565°W · South of SCI · Active</div>
+        <div class="buoy-note">Primary S/SW swell reference for Marmetta &amp; Yellow Banks. Full southern Pacific exposure, unobstructed by island shadow.</div>
+      </div>
+    </div>
+    <div class="buoy-row">
+      <div><div class="buoy-id offline">46249</div></div>
+      <div>
+        <div class="buoy-name">Santa Cruz Island South <span style="color:var(--pink);font-size:10px">(offline ~45 days)</span></div>
+        <div class="buoy-desc">33.821°N 119.708°W · Scripps Waverider · 1,737m deep</div>
+        <div class="buoy-note">Historical calibration reference. Offline — 46251 is active substitute for S/SW swell.</div>
+      </div>
+    </div>
+    <div class="buoy-row">
+      <div><div class="buoy-id">46053</div></div>
+      <div>
+        <div class="buoy-name">East Santa Barbara Channel</div>
+        <div class="buoy-desc">34.241°N 119.839°W · 12NM SW of SB · Active</div>
+        <div class="buoy-note">Primary NW swell reference for Chinese Harbor. North of island — shadowed from S/SW swell by SCI itself.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sessions">
+    <div class="sessions-toggle" onclick="toggleLog(this)">▸ &nbsp;Session Log — 37 calibration entries</div>
+    <div id="log-body" style="display:none"></div>
+  </div>
+
+  <footer>
+    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · NDBC 46251 + 46053</span>
+    <button class="refresh-btn" onclick="init()">↺ Refresh</button>
+  </footer>
+</div>
+
+<script>
+// ── SPOT DEFINITIONS ─────────────────────────────────────
+const SPOTS = {
+  marmetta: {
+    name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
+    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.55,
+    notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
+  },
+  yellowbanks: {
+    name:'Yellow Banks', beachNormal:180, swellDirs:[168,205], ideal:[175,185],
+    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.6,
+    notes:'Needs true S 175–185° to fire the point. Very direction-sensitive — 194°+ favors Marmetta over YB (confirmed 5/24/26). Bowl works on smaller/off-angle days. Big S closes out the point.'
+  },
+  chinese: {
+    name:'Chinese Harbor', beachNormal:340, swellDirs:[278,340], ideal:[285,318],
+    minPeriod:9, minHt:1.8, buoyRef:'46053', waveMultiplier:1.45,
+    notes:'NW swell 278°+. Short-period OK. Below ~278° = flat (confirmed 1/27/24). E/SE wind kills anchorage. Rocks at low tide. Best mornings.'
+  }
+};
+
+// ── SESSION LOG ───────────────────────────────────────────
+const SESSIONS = [
+  {date:'2018-07-13/16',spot:'yellowbanks',desc:'Chest high+ S swell, point working, light winds. Multi-day event.'},
+  {date:'2019-07-14',spot:'yellowbanks',desc:'OK day in the bowl. Mild wind.'},
+  {date:'2020-01-25',spot:'chinese',desc:'EPIC — head to head+ late afternoon. Best Chinese session ever.'},
+  {date:'2020-01-26',spot:'chinese',desc:'Disappointing follow-up — choppy, barely any action despite same forecast.'},
+  {date:'2020-06-21',spot:'marmetta',desc:'YB flat. Marmetta clean waist-chest, no wind.'},
+  {date:'2020-06-27',spot:'marmetta',desc:'YB flat. Marmetta fun waist-chest. Still small by evening.'},
+  {date:'2020-06-28',spot:'marmetta',desc:'Fun Marmetta, waist mostly with some bigger sets.'},
+  {date:'2021-04-24',spot:'yellowbanks',desc:'HUGE — head+ closing out the point, everyone in bowl. Little wind.'},
+  {date:'2021-08-27',spot:'marmetta',desc:'Great Marmetta ~chest high, consistent.'},
+  {date:'2021-08-28',spot:'marmetta',desc:'Fun waist-chest. NW breeze 10–12kt died in an hour.'},
+  {date:'2021-08-29',spot:'marmetta',desc:'More fun waist-chest.'},
+  {date:'2021-09-03',spot:'marmetta',desc:'Mushy ~3ft. Fun but not great.'},
+  {date:'2021-12-18',spot:'yellowbanks',desc:'Yellow Banks flat.'},
+  {date:'2021-12-19',spot:'chinese',desc:'YB flat. Chinese waist high, dicey rocks at low tide.'},
+  {date:'2022-06-25',spot:'marmetta',desc:'Super fun chest high, really consistent.'},
+  {date:'2022-06-26',spot:'marmetta',desc:'Waist high+, fairly inconsistent.'},
+  {date:'2022-08-27',spot:'marmetta',desc:'Head to overhead. Minimal wind. YB not doing much.'},
+  {date:'2022-10-08',spot:'marmetta',desc:'Chest high, low tide dicey. Long lulls. S→W/NW wind shift.'},
+  {date:'2023-03-11',spot:'marmetta',desc:'Fun peaky but crossed up, no defined takeoff.'},
+  {date:'2023-03-12',spot:'marmetta',desc:'AMAZING. Light wind. Best March session.'},
+  {date:'2023-06-03',spot:'marmetta',desc:'Waist-chest. W wind bumpy early arvo, cleaned up super fun.'},
+  {date:'2023-06-04',spot:'marmetta',desc:'YB point working. Marmetta bumped up vs prior day.'},
+  {date:'2023-08-12',spot:'marmetta',desc:'Looked lackluster but fun and consistent. Warm water.'},
+  {date:'2023-08-13',spot:'marmetta',desc:'Another fun day at Marmetta.'},
+  {date:'2023-09-23',spot:'marmetta',desc:'YB bowl inconsistent. Marmetta waist-chest. Offshore late arvo = super fun.'},
+  {date:'2023-09-24',spot:'marmetta',desc:'Clean but a touch smaller than prior day.'},
+  {date:'2024-01-27',spot:'chinese',desc:'Chinese flat — swell ~278°, just below threshold. Marmetta calm 2–3ft.'},
+  {date:'2024-01-28',spot:'chinese',desc:'Chinese flat again. E/SE wind in harbor.'},
+  {date:'2024-08-10',spot:'marmetta',desc:'Stomach-chest high, super clean.'},
+  {date:'2024-08-11',spot:'marmetta',desc:'Started small, got better. Waist-chest.'},
+  {date:'2025-10-12',spot:'chinese',desc:'Fun short-period chest high. Westerly up ~1pm, bumpy.'},
+  {date:'2025-10-17',spot:'marmetta',desc:'High tide flat at first, then waist high+ picked up.'},
+  {date:'2025-12-20',spot:'chinese',desc:'Super fun chest-ish high. Calm mid-morning to early afternoon.'},
+  {date:'2026-01-23',spot:'chinese',desc:'Fun small waves. Probably not worth trip alone. Choppy channel.'},
+  {date:'2026-02-01',spot:'chinese',desc:'Super nice all day. Chest to HEAD+ growing all afternoon.'},
+  {date:'2026-05-24',spot:'marmetta',desc:'~3ft with occasional 4ft sets. Calm at break, forecast spot-on. 194-198° swell.'},
+  {date:'2026-05-24',spot:'yellowbanks',desc:'Flat despite 194-198° swell that was working Marmetta. Confirmed YB needs true S 175-185° to fire the point.'}
+];
+
+// ── HELPERS ───────────────────────────────────────────────
+const mToFt = m => (m*3.28084).toFixed(1);
+const msToKt = ms => Math.round(ms*1.94384);
+const dirName = d => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(d/22.5)%16];
+const starsHtml = (n,sz) =>
+  `<span style="color:#4ecdc4;font-size:${sz||18}px">${'★'.repeat(n)}</span>` +
+  `<span style="color:#1c2038;font-size:${sz||18}px">${'☆'.repeat(5-n)}</span>`;
+
+// ── SPOT WIND CORRECTION ──────────────────────────────────
+// Applies terrain-based wind shelter correction per spot.
+// Returns corrected wind speed in m/s (direction unchanged).
+function spotWindCorrection(spot, windSpd, windDir) {
+  const isWesterly  = windDir >= 240 && windDir <= 320;
+  const isEasterly  = windDir >= 60  && windDir <= 150;
+  const kt = msToKt(windSpd);
+
+  if (spot === 'chinese') {
+    // Chinese is exposed to westerlies; easterlies get 50% discount (island cross)
+    if (isEasterly) return windSpd * 0.5;
+    return windSpd; // full westerly and other directions
+  }
+
+  if (spot === 'marmetta' || spot === 'yellowbanks') {
+    // Westerlies blocked by island — significant shelter
+    if (isWesterly) {
+      if (kt <= 15) return 0;          // effectively calm at spot
+      return windSpd * 0.6;            // 40% discount above 15kt
+    }
+    // Easterlies hit full strength — wrap around Anacapa straight shot
+    if (isEasterly) return windSpd;
+    // Other directions — moderate pass-through
+    return windSpd;
+  }
+
+  return windSpd;
+}
+
+// ── ANGULAR + DECAY HELPERS ───────────────────────────────
+function angularFactor(swellDir, beachNormal) {
+  const diff = (swellDir - beachNormal) * Math.PI / 180;
+  return Math.max(0, Math.cos(diff));
+}
+
+function decayFactor(period) {
+  if (period >= 15) return 0.98;
+  if (period >= 12) return 0.95;
+  if (period >= 10) return 0.92;
+  return 0.88;
+}
+
+// ── WAVE FACE ESTIMATE ────────────────────────────────────
+function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
+  const sp = SPOTS[spotKey];
+  const bn = sp.beachNormal;
+
+  const h1c = s1HtM * angularFactor(s1Dir, bn) * decayFactor(s1Per);
+  const h2c = (s2HtM > 0.2) ? s2HtM * angularFactor(s2Dir, bn) * decayFactor(s2Per) : 0;
+
+  const combinedM = Math.sqrt(h1c * h1c + h2c * h2c);
+
+  const h1sq = h1c * h1c;
+  const h2sq = h2c * h2c;
+  const totalSq = h1sq + h2sq;
+  const blendedPer = totalSq > 0 ? (h1sq * s1Per + h2sq * s2Per) / totalSq : s1Per;
+
+  const periodFactor = 0.7 + (Math.min(blendedPer, 22) / 22) * 0.8;
+  const faceFt = (combinedM * 3.28084) * periodFactor * sp.waveMultiplier;
+
+  let label;
+  if (faceFt < 1.5)      label = 'Flat';
+  else if (faceFt < 2.5) label = 'Ankle–Knee';
+  else if (faceFt < 3.5) label = 'Knee–Waist';
+  else if (faceFt < 4.5) label = 'Waist–Chest';
+  else if (faceFt < 5.5) label = 'Chest High';
+  else if (faceFt < 6.5) label = 'Chest–Head';
+  else if (faceFt < 7.5) label = 'Head High';
+  else if (faceFt < 9.0) label = 'Head–Overhead';
+  else                   label = 'Overhead+';
+
+  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer) };
+}
+
+// ── SCORING ───────────────────────────────────────────────
+function scoreSpot(spot, waveEst, windSpd, windDir) {
+  const faceFt = parseFloat(waveEst.faceFt);
+  // Apply spot wind correction before scoring
+  const correctedSpd = spotWindCorrection(spot, windSpd, windDir);
+  const wkt = msToKt(correctedSpd);
+  let sc = 0;
+  const reasons = [];
+
+  // Wave face score (0–65)
+  if (faceFt >= 7.0)      { sc += 65; reasons.push(`~${faceFt}ft — overhead+`); }
+  else if (faceFt >= 5.5) { sc += 55; reasons.push(`~${faceFt}ft — head high`); }
+  else if (faceFt >= 4.5) { sc += 45; reasons.push(`~${faceFt}ft — chest to head`); }
+  else if (faceFt >= 3.5) { sc += 35; reasons.push(`~${faceFt}ft — chest high`); }
+  else if (faceFt >= 2.5) { sc += 25; reasons.push(`~${faceFt}ft — waist to chest`); }
+  else if (faceFt >= 1.5) { sc += 12; reasons.push(`~${faceFt}ft — knee to waist`); }
+  else if (faceFt >= 0.5) { sc += 4;  reasons.push(`~${faceFt}ft — ankle to knee`); }
+  else                     { sc += 0;  reasons.push('Flat — swell not reaching this spot'); }
+
+  // Wind score using corrected spot wind
+  const offshore = spot==='chinese' ? (windDir>=55&&windDir<=145) : (windDir>=280||windDir<=35);
+  if (offshore && wkt<12)       { sc+=15; reasons.push(`Light offshore ${wkt}kt ${dirName(windDir)} — glassy`); }
+  else if (wkt<8)                { sc+=10; reasons.push(`Light wind ${wkt}kt — clean`); }
+  else if (!offshore && wkt>18) { sc-=12; reasons.push(`Strong onshore ${wkt}kt ${dirName(windDir)} — choppy`); }
+  else if (!offshore && wkt>10) { sc-=4;  reasons.push(`Onshore breeze ${wkt}kt ${dirName(windDir)}`); }
+  else                           {         reasons.push(`${wkt}kt ${dirName(windDir)}`); }
+
+  const go    = sc>=40?'go':sc>=22?'maybe':'nogo';
+  const stars = sc>=70?5:sc>=55?4:sc>=38?3:sc>=20?2:1;
+  return {stars, go, score:sc, reasons};
+}
+
+// ── STATE ─────────────────────────────────────────────────
+let currentSpot='marmetta', appDays=null, nwsAlerts=[], selDay=0, chartInst=null;
+
+// ── DATA FETCH ────────────────────────────────────────────
+async function fetchAll() {
+  // Fetch 1: default best-match model — daily aggregates + hourly primary swell
+  const marineURL =
+    'https://marine-api.open-meteo.com/v1/marine' +
+    '?latitude=34.04&longitude=-119.75' +
+    '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
+    '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
+    '&forecast_days=7&timezone=America%2FLos_Angeles';
+
+  // Fetch 2: ncep_gfswave025 model — secondary swell only, no daily params
+  // Field names are secondary_swell_wave_* (not _2 suffix)
+  const marine2URL =
+    'https://marine-api.open-meteo.com/v1/marine' +
+    '?latitude=34.04&longitude=-119.75' +
+    '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
+    '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
+
+  const windURL =
+    'https://api.open-meteo.com/v1/forecast' +
+    '?latitude=34.18&longitude=-119.84' +
+    '&hourly=windspeed_10m,winddirection_10m' +
+    '&forecast_days=7&timezone=America%2FLos_Angeles&windspeed_unit=ms';
+
+  const nwsURL = 'https://api.weather.gov/alerts/active?zone=PZZ650';
+
+  const [marineRes, marine2Res, windRes, nwsRes] = await Promise.all([
+    fetch(marineURL),
+    fetch(marine2URL).catch(()=>null),
+    fetch(windURL),
+    fetch(nwsURL, {headers:{'Accept':'application/geo+json'}}).catch(()=>null)
+  ]);
+
+  if (!marineRes.ok) throw new Error(`Marine API: ${marineRes.status}`);
+  if (!windRes.ok)   throw new Error(`Wind API: ${windRes.status}`);
+
+  const marine = await marineRes.json();
+
+  // Merge secondary swell into marine.hourly if the request succeeded
+  if (marine2Res && marine2Res.ok) {
+    try {
+      const m2 = await marine2Res.json();
+      if (m2.hourly) {
+        marine.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
+        marine.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
+        marine.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
+      }
+    } catch(e) { /* secondary swell unavailable — app runs fine without it */ }
+  }
+
+  const wind = await windRes.json();
+  const nws  = nwsRes && nwsRes.ok ? await nwsRes.json() : null;
+  return {marine, wind, nws};
+}
+
+function parseNWS(nws) {
+  if (!nws || !nws.features) return [];
+  return nws.features.map(f => {
+    const p = f.properties;
+    const ev = (p.event||'').toLowerCase();
+    let sev = 'info';
+    if (ev.includes('storm warning')||ev.includes('hurricane')) sev='storm';
+    else if (ev.includes('gale')) sev='gale';
+    else if (ev.includes('small craft')) sev='sca';
+    return {severity:sev, headline:p.headline||p.event, event:p.event};
+  }).filter(a=>a.severity!=='info');
+}
+
+function buildDays(raw) {
+  const {marine, wind} = raw;
+  const days = [];
+  for (let i=0; i<7; i++) {
+    const date = new Date(marine.daily.time[i]+'T12:00:00-07:00');
+    const base = i*24;
+    const h    = marine.hourly;
+    const noon = base+12;
+
+    // Secondary swell merged from ncep_gfswave025 fetch — zeroed if unavailable
+    const s2Ht  = h.secondary_swell_wave_height    ? (h.secondary_swell_wave_height[noon]||0)    : 0;
+    const s2Dir = h.secondary_swell_wave_direction ? (h.secondary_swell_wave_direction[noon]||0) : 0;
+    const s2Per = h.secondary_swell_wave_period    ? (h.secondary_swell_wave_period[noon]||0)    : 0;
+
+    const wh = wind.hourly;
+    const wAt = idx => ({spd: wh.windspeed_10m[idx]||0, dir: wh.winddirection_10m[idx]||0});
+    const wNoon = wAt(base+12);
+
+    days.push({
+      dayName: date.toLocaleDateString('en-US',{weekday:'short',timeZone:'America/Los_Angeles'}),
+      date, isToday: i===0,
+      s1Ht:  marine.daily.swell_wave_height_max[i]||0,
+      s1Dir: marine.daily.swell_wave_direction_dominant[i]||0,
+      s1Per: marine.daily.swell_wave_period_max[i]||10,
+      s2Ht, s2Dir, s2Per,
+      wMorn:  wAt(base+7),
+      wAftn:  wAt(base+14),
+      wNight: wAt(base+20),
+      wNoon, windSpd: wNoon.spd, windDir: wNoon.dir
+    });
+  }
+  return days;
+}
+
+// ── RENDER ────────────────────────────────────────────────
+function getAlert(dayIdx) {
+  if (nwsAlerts.length===0) return null;
+  return dayIdx < 2 ? (nwsAlerts[0]||null) : null;
+}
+
+function render(spot, days) {
+  const d  = days[selDay];
+  const sp = SPOTS[spot];
+
+  // Corrected spot wind for selected day
+  const correctedWindSpd = spotWindCorrection(spot, d.windSpd, d.windDir);
+  const correctedWkt     = msToKt(correctedWindSpd);
+
+  // Wave face and scoring
+  const waveEst = estimateWaveFace(d.s1Ht, d.s1Dir, d.s1Per, d.s2Ht, d.s2Dir, d.s2Per, spot);
+  const rating  = scoreSpot(spot, waveEst, d.windSpd, d.windDir);
+
+  // Hero
+  document.getElementById('hero-stars').innerHTML = starsHtml(rating.stars, 22);
+  const badge = document.getElementById('hero-badge');
+  badge.className = 'badge '+rating.go;
+  badge.textContent = rating.go==='go'?'GO':rating.go==='nogo'?'NO GO':'MAYBE';
+
+  // Wave face
+  document.getElementById('wave-face').textContent = `~${waveEst.faceFt}ft`;
+  document.getElementById('wave-face-desc').textContent =
+    `${waveEst.label} — ${mToFt(d.s1Ht)}ft @ ${Math.round(d.s1Per)}s ${dirName(d.s1Dir)}` +
+    (d.s2Ht > 0.2 ? ` + ${mToFt(d.s2Ht)}ft @ ${Math.round(d.s2Per)}s ${dirName(d.s2Dir)}` : '') +
+    ` · blended ${waveEst.blendedPer}s`;
+
+  // Spot wind tile
+  document.getElementById('spot-wind-val').textContent = correctedWkt < 2 ? 'Calm' : correctedWkt+'kt';
+  document.getElementById('spot-wind-dir').textContent = correctedWkt < 2 ? '—' : dirName(d.windDir);
+
+  // Swell cards — raw buoy data, independent of scoring
+  document.getElementById('s1-ht').textContent  = mToFt(d.s1Ht);
+  document.getElementById('s1-per').textContent = Math.round(d.s1Per)+'s';
+  document.getElementById('s1-dir').textContent = Math.round(d.s1Dir)+'° '+dirName(d.s1Dir);
+  document.getElementById('s2-ht').textContent  = d.s2Ht>0.2 ? mToFt(d.s2Ht) : '—';
+  document.getElementById('s2-per').textContent = d.s2Ht>0.2 ? Math.round(d.s2Per)+'s' : '—';
+  document.getElementById('s2-dir').textContent = d.s2Ht>0.2 ? Math.round(d.s2Dir)+'° '+dirName(d.s2Dir) : '—';
+
+  // Channel wind periods (raw, uncorrected)
+  const setW = (id, did, w) => {
+    const kt = msToKt(w.spd);
+    document.getElementById(id).textContent  = kt<2 ? 'Calm' : kt+' kt';
+    document.getElementById(did).textContent = kt<2 ? '—'    : dirName(w.dir);
+  };
+  setW('w-morn','w-morn-dir',d.wMorn);
+  setW('w-aftn','w-aftn-dir',d.wAftn);
+  setW('w-night','w-night-dir',d.wNight);
+
+  // Spot wind periods (corrected for terrain shelter per spot)
+  const setSwW = (id, did, w) => {
+    const corrSpd = spotWindCorrection(spot, w.spd, w.dir);
+    const kt = msToKt(corrSpd);
+    document.getElementById(id).textContent  = kt<2 ? 'Calm' : kt+' kt';
+    document.getElementById(did).textContent = kt<2 ? '—'    : dirName(w.dir);
+  };
+  setSwW('sw-morn','sw-morn-dir',d.wMorn);
+  setSwW('sw-aftn','sw-aftn-dir',d.wAftn);
+  setSwW('sw-night','sw-night-dir',d.wNight);
+
+  // NWS warning note
+  const alert = getAlert(selDay);
+  const noteEl = document.getElementById('day-warn-note');
+  if (selDay >= 2) {
+    noteEl.textContent = '⚠ NWS warnings beyond ~48h are not yet issued — check again as the day approaches.';
+    noteEl.style.display = 'block';
+  } else if (alert) {
+    noteEl.textContent = '';
+    noteEl.style.display = 'none';
+  } else {
+    noteEl.textContent = selDay===0
+      ? '✓ No active NWS marine warnings for PZZ650 right now.'
+      : '✓ No NWS warnings currently issued for this day.';
+    noteEl.style.display = 'block';
+  }
+
+  // Active warning banner
+  const curAlert = nwsAlerts[0]||null;
+  const bannerEl = document.getElementById('warn-banner');
+  if (curAlert) {
+    bannerEl.className = 'warn-banner '+curAlert.severity;
+    document.getElementById('warn-type-label').textContent =
+      `NWS MARINE WARNING · PZZ650 · ${(curAlert.event||'').toUpperCase()}`;
+    document.getElementById('warn-text').textContent = curAlert.headline;
+    bannerEl.style.display='block';
+  } else {
+    bannerEl.style.display='none';
+  }
+
+  // 7-day strip
+  const sdEl = document.getElementById('seven-day');
+  sdEl.innerHTML='';
+  days.forEach((dd,i)=>{
+    const we  = estimateWaveFace(dd.s1Ht, dd.s1Dir, dd.s1Per, dd.s2Ht, dd.s2Dir, dd.s2Per, spot);
+    const rr  = scoreSpot(spot, we, dd.windSpd, dd.windDir);
+    const cws = spotWindCorrection(spot, dd.windSpd, dd.windDir);
+    const wkt = msToKt(cws);
+    const da  = getAlert(i);
+
+    // Only show NWS chip for days 0–1 with an active alert; nothing for days 2+
+    let warnHtml = '';
+    if (da && i < 2) warnHtml = `<div class="day-warn-chip ${da.severity}">${da.severity==='sca'?'SCA':da.severity==='gale'?'GALE':'STORM'}</div>`;
+
+    const div = document.createElement('div');
+    div.className='day-card'+(i===selDay?' selected':'');
+    div.innerHTML=`
+      <div class="day-name">${dd.dayName}</div>
+      <div style="font-size:9px;margin-bottom:3px">${starsHtml(rr.stars,9)}</div>
+      <div class="day-ht">~${we.faceFt}<span>ft</span></div>
+      <div class="day-wind">${wkt<2?'calm':wkt+'kt'}</div>
+      ${warnHtml}
+      <div class="day-dot ${rr.go}"></div>`;
+    div.onclick=()=>{selDay=i;render(currentSpot,appDays);};
+    sdEl.appendChild(div);
+  });
+
+  // Spot wind section label
+  const swLabel = document.getElementById('spot-wind-label');
+  if (swLabel) swLabel.textContent = `— at ${sp.name}, terrain-corrected`;
+
+  // Buoy highlights
+  const isSouth = d.s1Dir>=135&&d.s1Dir<=265;
+  document.getElementById('buoy-46251').className = isSouth?'buoy-active':'';
+  document.getElementById('buoy-46053').className = !isSouth?'buoy-active':'';
+
+  renderChart(days, spot);
+}
+
+function renderChart(days, spot) {
+  if (chartInst) { chartInst.destroy(); chartInst=null; }
+  const labels  = days.map(d=>d.dayName);
+  const heights = days.map(d=>{
+    const we = estimateWaveFace(d.s1Ht, d.s1Dir, d.s1Per, d.s2Ht, d.s2Dir, d.s2Per, spot);
+    const val = parseFloat(we.faceFt);
+    return val < 0.1 ? 0.15 : val; // minimum stub for flat days
+  });
+  const colors = days.map(d=>{
+    const we = estimateWaveFace(d.s1Ht, d.s1Dir, d.s1Per, d.s2Ht, d.s2Dir, d.s2Per, spot);
+    const rr = scoreSpot(spot, we, d.windSpd, d.windDir);
+    return rr.go==='go'?'#4ecdc4':rr.go==='maybe'?'#e8c84a':'#d46fa0';
+  });
+  chartInst = new Chart(document.getElementById('swellChart'),{
+    type:'bar',
+    data:{labels,datasets:[{
+      label:'Est. Wave Face (ft)', data:heights,
+      backgroundColor:colors.map(c=>c+'99'), borderColor:colors, borderWidth:1,
+      borderRadius:4, borderSkipped:false
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#141828', borderColor:'rgba(155,135,212,.3)', borderWidth:1,
+          titleColor:'#9b87d4', bodyColor:'#8a96c8',
+          callbacks:{label:ctx=>{
+            const d=days[ctx.dataIndex];
+            const we=estimateWaveFace(d.s1Ht,d.s1Dir,d.s1Per,d.s2Ht,d.s2Dir,d.s2Per,spot);
+            return `~${ctx.raw}ft face · ${we.label} · ${we.blendedPer}s blended`;
+          }}
+        }
+      },
+      scales:{
+        x:{ticks:{color:'#4a5078',font:{size:11}},grid:{display:false}},
+        y:{ticks:{color:'#4a5078',font:{size:11},callback:v=>v+'ft'},grid:{color:'rgba(155,135,212,.08)'},beginAtZero:true}
+      }
+    }
+  });
+}
+
+// ── UI ────────────────────────────────────────────────────
+function selectSpot(spot, btn) {
+  currentSpot=spot;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  if (appDays) render(spot, appDays);
+}
+
+function toggleLog(btn) {
+  const body=document.getElementById('log-body');
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  btn.textContent=(open?'▸':'▾')+' \u00a0Session Log — 37 calibration entries';
+  if (!open&&!body.innerHTML) {
+    body.innerHTML=SESSIONS.map(s=>{
+      const tag=s.spot==='yellowbanks'?'YB':s.spot==='chinese'?'CH':'Mar';
+      return `<div class="session-item">
+        <span class="session-date">${s.date}</span>
+        <span class="session-tag">${tag}</span>
+        <span class="session-desc">${s.desc}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────
+async function init() {
+  selDay=0;
+  document.getElementById('hero-badge').textContent='...';
+  document.getElementById('upd-time').textContent='Fetching...';
+  document.getElementById('wave-face').textContent='—';
+  document.getElementById('wave-face-desc').textContent='Calculating...';
+  document.getElementById('spot-wind-val').textContent='—';
+  document.getElementById('spot-wind-dir').textContent='—';
+
+  try {
+    const raw = await fetchAll();
+    nwsAlerts = parseNWS(raw.nws);
+    appDays   = buildDays(raw);
+    render(currentSpot, appDays);
+
+    const d0=appDays[0];
+    const isSouth=d0.s1Dir>=135&&d0.s1Dir<=265;
+    document.getElementById('buoy-46251').textContent =
+      `46251 SCI Basin · ${isSouth?mToFt(d0.s1Ht)+'ft '+Math.round(d0.s1Dir)+'°':'shadowed today'}`;
+    document.getElementById('buoy-46053').textContent =
+      `46053 E.SB Ch · ${!isSouth?mToFt(d0.s1Ht)+'ft '+Math.round(d0.s1Dir)+'°':'shadowed today'}`;
+    document.getElementById('upd-time').textContent =
+      'Updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Los_Angeles'});
+
+  } catch(err) {
+    document.getElementById('wave-face-desc').textContent='Error loading data';
+    document.getElementById('wave-face').textContent='—';
+    const errDiv = document.createElement('div');
+    errDiv.className='err';
+    errDiv.innerHTML=`<strong>Could not load forecast data</strong><br>${err.message}<br><br>Open-Meteo is CORS-enabled — this works from any hosted domain. If opening locally via <code>file://</code>, some browsers block outbound requests. Deploy to GitHub Pages or Netlify for full functionality.`;
+    document.querySelector('.conditions-row').after(errDiv);
+    document.getElementById('upd-time').textContent='Error';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
