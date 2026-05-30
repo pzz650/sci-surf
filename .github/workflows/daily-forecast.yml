@@ -1,0 +1,28 @@
+name: Daily Surf Forecast Email
+
+on:
+  schedule:
+    # 6:00 AM PT = 14:00 UTC (13:00 UTC during PDT / summer)
+    # Using 13:00 UTC to hit 6am during PDT (Mar–Nov); will arrive ~7am during PST (Nov–Mar)
+    - cron: '0 13 * * *'
+  workflow_dispatch:  # allows manual trigger from GitHub Actions tab for testing
+
+jobs:
+  send-forecast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run forecast script
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TO_EMAIL:       ${{ secrets.TO_EMAIL }}
+          FROM_EMAIL:     ${{ secrets.FROM_EMAIL }}
+        run: node forecast.js
