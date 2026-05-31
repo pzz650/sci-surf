@@ -357,7 +357,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
   </div>
 
   <div class="sessions">
-    <div class="sessions-toggle" onclick="toggleLog(this)">▸ &nbsp;Session Log — 37 calibration entries</div>
+    <div class="sessions-toggle" onclick="toggleLog(this)">▸ &nbsp;Session Log — 40 calibration entries</div>
     <div id="log-body" style="display:none"></div>
   </div>
 
@@ -372,13 +372,14 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
 const SPOTS = {
   marmetta: {
     name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
-    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.55,
+    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.25,
     notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
-    name:'Yellow Banks', beachNormal:180, swellDirs:[168,205], ideal:[175,185],
-    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.6,
-    notes:'Needs true S 175–185° to fire the point. Very direction-sensitive — 194°+ favors Marmetta over YB (confirmed 5/24/26). Bowl works on smaller/off-angle days. Big S closes out the point.'
+    name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
+    pointIdeal:[175,195], bowlWindow:[196,215],
+    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.35,
+    notes:'Two-mode spot. Point fires on true S 175–195° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
   },
   chinese: {
     name:'Chinese Harbor', beachNormal:340, swellDirs:[278,340], ideal:[285,318],
@@ -390,6 +391,7 @@ const SPOTS = {
 // ── SESSION LOG ───────────────────────────────────────────
 const SESSIONS = [
   {date:'2018-07-13/16',spot:'yellowbanks',desc:'Chest high+ S swell, point working, light winds. Multi-day event.'},
+  {date:'2018-07-14',spot:'yellowbanks',desc:'Point firing — chest high, 4.2ft buoy @ 14.7s, avg 183°. Confirmed point window. Buoy calibration reference.'},
   {date:'2019-07-14',spot:'yellowbanks',desc:'OK day in the bowl. Mild wind.'},
   {date:'2020-01-25',spot:'chinese',desc:'EPIC — head to head+ late afternoon. Best Chinese session ever.'},
   {date:'2020-01-26',spot:'chinese',desc:'Disappointing follow-up — choppy, barely any action despite same forecast.'},
@@ -397,6 +399,7 @@ const SESSIONS = [
   {date:'2020-06-27',spot:'marmetta',desc:'YB flat. Marmetta fun waist-chest. Still small by evening.'},
   {date:'2020-06-28',spot:'marmetta',desc:'Fun Marmetta, waist mostly with some bigger sets.'},
   {date:'2021-04-24',spot:'yellowbanks',desc:'HUGE — head+ closing out the point, everyone in bowl. Little wind.'},
+  {date:'2021-06-04',spot:'yellowbanks',desc:'Head high to 1ft overhead. Point breaking on rocks (too steep at 210° SSW). Inside bowl super fun. 4.2ft buoy @ 13.9s avg 210° — confirmed bowl-mode day. Buoy calibration reference.'},
   {date:'2021-08-27',spot:'marmetta',desc:'Great Marmetta ~chest high, consistent.'},
   {date:'2021-08-28',spot:'marmetta',desc:'Fun waist-chest. NW breeze 10–12kt died in an hour.'},
   {date:'2021-08-29',spot:'marmetta',desc:'More fun waist-chest.'},
@@ -412,7 +415,7 @@ const SESSIONS = [
   {date:'2023-06-03',spot:'marmetta',desc:'Waist-chest. W wind bumpy early arvo, cleaned up super fun.'},
   {date:'2023-06-04',spot:'marmetta',desc:'YB point working. Marmetta bumped up vs prior day.'},
   {date:'2023-08-12',spot:'marmetta',desc:'Looked lackluster but fun and consistent. Warm water.'},
-  {date:'2023-08-13',spot:'marmetta',desc:'Another fun day at Marmetta.'},
+  {date:'2023-08-13',spot:'marmetta',desc:'Chest high, clean — Kevin called it epic. 3.3ft buoy @ 16s, avg 210°. Confirmed Marmetta multiplier well-calibrated.'},
   {date:'2023-09-23',spot:'marmetta',desc:'YB bowl inconsistent. Marmetta waist-chest. Offshore late arvo = super fun.'},
   {date:'2023-09-24',spot:'marmetta',desc:'Clean but a touch smaller than prior day.'},
   {date:'2024-01-27',spot:'chinese',desc:'Chinese flat — swell ~278°, just below threshold. Marmetta calm 2–3ft.'},
@@ -420,6 +423,7 @@ const SESSIONS = [
   {date:'2024-08-10',spot:'marmetta',desc:'Stomach-chest high, super clean.'},
   {date:'2024-08-11',spot:'marmetta',desc:'Started small, got better. Waist-chest.'},
   {date:'2025-10-12',spot:'chinese',desc:'Fun short-period chest high. Westerly up ~1pm, bumpy.'},
+  {date:'2025-07-20',spot:'marmetta',desc:'Kevin — solid head high, long walls, did not close out. Morning peak 5.3ft buoy, noon ~3.1ft @ 14.9s avg 181°. Confirms Marmetta fires well on true S at this size.'},
   {date:'2025-10-17',spot:'marmetta',desc:'High tide flat at first, then waist high+ picked up.'},
   {date:'2025-12-20',spot:'chinese',desc:'Super fun chest-ish high. Calm mid-morning to early afternoon.'},
   {date:'2026-01-23',spot:'chinese',desc:'Fun small waves. Probably not worth trip alone. Choppy channel.'},
@@ -507,7 +511,7 @@ function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
   else if (faceFt < 9.0) label = 'Head–Overhead';
   else                   label = 'Overhead+';
 
-  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer) };
+  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer), dominantDir: h1c >= h2c ? s1Dir : s2Dir };
 }
 
 // ── SCORING ───────────────────────────────────────────────
@@ -516,9 +520,57 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   // Apply spot wind correction before scoring
   const correctedSpd = spotWindCorrection(spot, windSpd, windDir);
   const wkt = msToKt(correctedSpd);
+  const offshore = spot==='chinese' ? (windDir>=55&&windDir<=145) : (windDir>=280||windDir<=35);
   let sc = 0;
   const reasons = [];
 
+  // ── Yellow Banks two-mode scoring ────────────────────────
+  if (spot === 'yellowbanks') {
+    const sp = SPOTS['yellowbanks'];
+    const swellDir = waveEst.dominantDir !== undefined ? waveEst.dominantDir : null;
+
+    // Determine mode from dominant swell direction if available
+    const pointMode = swellDir !== null && swellDir >= sp.pointIdeal[0] && swellDir <= sp.pointIdeal[1];
+    const bowlMode  = swellDir !== null && swellDir >= sp.bowlWindow[0]  && swellDir <= sp.bowlWindow[1];
+    const ybMode    = pointMode ? 'point' : (bowlMode ? 'bowl' : null);
+
+    if (pointMode) {
+      reasons.push(`Point mode — true S ${Math.round(swellDir)}° ${dirName(swellDir)}`);
+      // Full wave face scoring for point
+      if (faceFt >= 7.0)      { sc += 65; reasons.push(`~${faceFt}ft — overhead+`); }
+      else if (faceFt >= 5.5) { sc += 55; reasons.push(`~${faceFt}ft — head high`); }
+      else if (faceFt >= 4.5) { sc += 45; reasons.push(`~${faceFt}ft — chest to head`); }
+      else if (faceFt >= 3.5) { sc += 35; reasons.push(`~${faceFt}ft — solid point size`); }
+      else if (faceFt >= 2.5) { sc += 25; reasons.push(`~${faceFt}ft — workable point`); }
+      else if (faceFt >= 1.5) { sc += 12; reasons.push(`~${faceFt}ft — marginal`); }
+      else                     { sc += 0;  reasons.push('Flat — too small'); }
+    } else if (bowlMode) {
+      reasons.push(`Bowl mode — SSW ${Math.round(swellDir)}° ${dirName(swellDir)}, point likely not firing`);
+      // Bowl scoring — capped slightly below point-mode ceiling
+      if (faceFt >= 6.0)      { sc += 52; reasons.push(`~${faceFt}ft — solid bowl size`); }
+      else if (faceFt >= 4.5) { sc += 42; reasons.push(`~${faceFt}ft — good bowl size`); }
+      else if (faceFt >= 3.5) { sc += 30; reasons.push(`~${faceFt}ft — workable bowl`); }
+      else if (faceFt >= 2.5) { sc += 18; reasons.push(`~${faceFt}ft — marginal bowl`); }
+      else                     { sc += 0;  reasons.push('Flat — too small for bowl'); }
+    } else {
+      // Outside window entirely — flat
+      reasons.push('Swell outside Yellow Banks window — likely flat');
+      return {stars:1, go:'nogo', score:5, reasons, ybMode: null};
+    }
+
+    // Wind (same for both modes)
+    if (offshore && wkt<12)       { sc+=15; reasons.push(`Light offshore ${wkt}kt ${dirName(windDir)} — glassy`); }
+    else if (wkt<8)                { sc+=10; reasons.push(`Light wind ${wkt}kt — clean`); }
+    else if (!offshore && wkt>18) { sc-=12; reasons.push(`Strong onshore ${wkt}kt ${dirName(windDir)} — choppy`); }
+    else if (!offshore && wkt>10) { sc-=4;  reasons.push(`Onshore breeze ${wkt}kt ${dirName(windDir)}`); }
+    else                           {         reasons.push(`${wkt}kt ${dirName(windDir)}`); }
+
+    const go    = sc>=40?'go':sc>=22?'maybe':'nogo';
+    const stars = sc>=70?5:sc>=55?4:sc>=38?3:sc>=20?2:1;
+    return {stars, go, score:sc, reasons, ybMode};
+  }
+
+  // ── Standard scoring (Marmetta + Chinese Harbor) ─────────
   // Wave face score (0–65)
   if (faceFt >= 7.0)      { sc += 65; reasons.push(`~${faceFt}ft — overhead+`); }
   else if (faceFt >= 5.5) { sc += 55; reasons.push(`~${faceFt}ft — head high`); }
@@ -530,7 +582,6 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   else                     { sc += 0;  reasons.push('Flat — swell not reaching this spot'); }
 
   // Wind score using corrected spot wind
-  const offshore = spot==='chinese' ? (windDir>=55&&windDir<=145) : (windDir>=280||windDir<=35);
   if (offshore && wkt<12)       { sc+=15; reasons.push(`Light offshore ${wkt}kt ${dirName(windDir)} — glassy`); }
   else if (wkt<8)                { sc+=10; reasons.push(`Light wind ${wkt}kt — clean`); }
   else if (!offshore && wkt>18) { sc-=12; reasons.push(`Strong onshore ${wkt}kt ${dirName(windDir)} — choppy`); }
@@ -616,16 +667,36 @@ function parseNWS(nws) {
 function buildDays(raw) {
   const {marine, wind} = raw;
   const days = [];
+
+  // Average swell direction across 8am–4pm local (every 2hrs: indices 8,10,12,14,16)
+  // Uses circular mean to handle wrap-around correctly (e.g. 355° + 5° → 0°, not 180°)
+  function circularMeanDir(dirs) {
+    const valid = dirs.filter(d => d > 0 && d < 999);
+    if (valid.length === 0) return 0;
+    const sinSum = valid.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
+    const cosSum = valid.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
+    const mean = Math.atan2(sinSum, cosSum) * 180 / Math.PI;
+    return mean < 0 ? mean + 360 : mean;
+  }
+
   for (let i=0; i<7; i++) {
     const date = new Date(marine.daily.time[i]+'T12:00:00-07:00');
     const base = i*24;
     const h    = marine.hourly;
-    const noon = base+12;
 
-    // Secondary swell merged from ncep_gfswave025 fetch — zeroed if unavailable
+    // Sample hours 8, 10, 12, 14, 16 local (every 2hrs, 8am–4pm)
+    const sampleIdxs = [8, 10, 12, 14, 16].map(hr => base + hr);
+
+    // Primary swell: height+period from daily max, direction averaged over window
+    const s1Dirs = sampleIdxs.map(idx => h.swell_wave_direction?.[idx] || 0);
+    const s1DirAvg = circularMeanDir(s1Dirs);
+
+    // Secondary swell: noon values for height/period, direction averaged over window
+    const noon = base + 12;
     const s2Ht  = h.secondary_swell_wave_height    ? (h.secondary_swell_wave_height[noon]||0)    : 0;
-    const s2Dir = h.secondary_swell_wave_direction ? (h.secondary_swell_wave_direction[noon]||0) : 0;
-    const s2Per = h.secondary_swell_wave_period    ? (h.secondary_swell_wave_period[noon]||0)    : 0;
+    const s2Per = h.secondary_swell_wave_period     ? (h.secondary_swell_wave_period[noon]||0)    : 0;
+    const s2Dirs = sampleIdxs.map(idx => h.secondary_swell_wave_direction?.[idx] || 0);
+    const s2DirAvg = s2Ht > 0.2 ? circularMeanDir(s2Dirs) : 0;
 
     const wh = wind.hourly;
     const wAt = idx => ({spd: wh.windspeed_10m[idx]||0, dir: wh.winddirection_10m[idx]||0});
@@ -635,9 +706,9 @@ function buildDays(raw) {
       dayName: date.toLocaleDateString('en-US',{weekday:'short',timeZone:'America/Los_Angeles'}),
       date, isToday: i===0,
       s1Ht:  marine.daily.swell_wave_height_max[i]||0,
-      s1Dir: marine.daily.swell_wave_direction_dominant[i]||0,
+      s1Dir: s1DirAvg,
       s1Per: marine.daily.swell_wave_period_max[i]||10,
-      s2Ht, s2Dir, s2Per,
+      s2Ht, s2Dir: s2DirAvg, s2Per,
       wMorn:  wAt(base+7),
       wAftn:  wAt(base+14),
       wNight: wAt(base+20),
@@ -833,7 +904,7 @@ function toggleLog(btn) {
   const body=document.getElementById('log-body');
   const open=body.style.display!=='none';
   body.style.display=open?'none':'block';
-  btn.textContent=(open?'▸':'▾')+' \u00a0Session Log — 37 calibration entries';
+  btn.textContent=(open?'▸':'▾')+' \u00a0Session Log — 40 calibration entries';
   if (!open&&!body.innerHTML) {
     body.innerHTML=SESSIONS.map(s=>{
       const tag=s.spot==='yellowbanks'?'YB':s.spot==='chinese'?'CH':'Mar';
