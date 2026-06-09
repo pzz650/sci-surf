@@ -156,19 +156,37 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 async function fetchAll() {
-  const marineURL =
+  // ── S/SW swell — queried at buoy 46251 (Santa Cruz Basin, 33.769°N 119.565°W)
+  // Reference buoy for Marmetta & Yellow Banks. Full southern Pacific exposure.
+  const marineSWURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.04&longitude=-119.75' +
+    '?latitude=33.769&longitude=-119.565' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
-  const marine2URL =
+  const marineSW2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.04&longitude=-119.75' +
+    '?latitude=33.769&longitude=-119.565' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
+  // ── NW swell — queried at buoy 46053 (East Santa Barbara Channel, 34.241°N 119.839°W)
+  // Reference buoy for Chinese Harbor. North of SCI, exposed to NW swell.
+  const marineCHURL =
+    'https://marine-api.open-meteo.com/v1/marine' +
+    '?latitude=34.241&longitude=-119.839' +
+    '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
+    '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
+    '&forecast_days=7&timezone=America%2FLos_Angeles';
+
+  const marineCH2URL =
+    'https://marine-api.open-meteo.com/v1/marine' +
+    '?latitude=34.241&longitude=-119.839' +
+    '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
+    '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
+
+  // ── Wind — mid-channel point unchanged (34.18°N 119.84°W)
   const windURL =
     'https://api.open-meteo.com/v1/forecast' +
     '?latitude=34.18&longitude=-119.84' +
@@ -177,68 +195,103 @@ async function fetchAll() {
 
   const nwsURL = 'https://api.weather.gov/alerts/active?zone=PZZ650';
 
-  const [marineRes, marine2Res, windRes, nwsRes] = await Promise.all([
-    fetch(marineURL),
-    fetch(marine2URL).catch(() => null),
+  const [marineSWRes, marineSW2Res, marineCHRes, marineCH2Res, windRes, nwsRes] = await Promise.all([
+    fetch(marineSWURL),
+    fetch(marineSW2URL).catch(() => null),
+    fetch(marineCHURL),
+    fetch(marineCH2URL).catch(() => null),
     fetch(windURL),
     fetch(nwsURL, { headers: { 'Accept': 'application/geo+json' } }).catch(() => null)
   ]);
 
-  if (!marineRes.ok) throw new Error(`Marine API: ${marineRes.status}`);
-  if (!windRes.ok)   throw new Error(`Wind API: ${windRes.status}`);
+  if (!marineSWRes.ok) throw new Error(`Marine SW API: ${marineSWRes.status}`);
+  if (!marineCHRes.ok) throw new Error(`Marine CH API: ${marineCHRes.status}`);
+  if (!windRes.ok)     throw new Error(`Wind API: ${windRes.status}`);
 
-  const marine = await marineRes.json();
-  if (marine2Res && marine2Res.ok) {
+  const marineSW = await marineSWRes.json();
+  const marineCH = await marineCHRes.json();
+
+  if (marineSW2Res && marineSW2Res.ok) {
     try {
-      const m2 = await marine2Res.json();
+      const m2 = await marineSW2Res.json();
       if (m2.hourly) {
-        marine.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
-        marine.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
-        marine.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
+        marineSW.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
+        marineSW.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
+        marineSW.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
+      }
+    } catch(e) { /* secondary swell unavailable */ }
+  }
+
+  if (marineCH2Res && marineCH2Res.ok) {
+    try {
+      const m2 = await marineCH2Res.json();
+      if (m2.hourly) {
+        marineCH.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
+        marineCH.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
+        marineCH.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
       }
     } catch(e) { /* secondary swell unavailable */ }
   }
 
   const wind = await windRes.json();
   const nws  = nwsRes && nwsRes.ok ? await nwsRes.json() : null;
-  return { marine, wind, nws };
+  return { marineSW, marineCH, wind, nws };
 }
 
 // ── BUILD DAYS (with direction averaging 8am–4pm) ─────────────────────────────
 function buildDays(raw) {
-  const { marine, wind } = raw;
+  const { marineSW, marineCH, wind } = raw;
   const days = [];
 
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(marine.daily.time[i] + 'T12:00:00-07:00');
+  // Helper: extract primary+secondary swell from one marine object for day i
+  function extractSwell(m, i) {
     const base = i * 24;
-    const h    = marine.hourly;
-
-    // Average swell direction over 8am–4pm (every 2hrs) using circular mean
+    const h = m.hourly;
     const sampleIdxs = [8, 10, 12, 14, 16].map(hr => base + hr);
-    const s1Dirs  = sampleIdxs.map(idx => h.swell_wave_direction?.[idx] || 0);
+    const noon = base + 12;
+    const s1Dirs   = sampleIdxs.map(idx => h.swell_wave_direction?.[idx] || 0);
     const s1DirAvg = circularMean(s1Dirs);
-
-    const noon  = base + 12;
-    const s2Ht  = h.secondary_swell_wave_height    ? (h.secondary_swell_wave_height[noon]    || 0) : 0;
-    const s2Per = h.secondary_swell_wave_period     ? (h.secondary_swell_wave_period[noon]    || 0) : 0;
-    const s2Dirs = sampleIdxs.map(idx => h.secondary_swell_wave_direction?.[idx] || 0);
+    const s2Ht  = h.secondary_swell_wave_height ? (h.secondary_swell_wave_height[noon] || 0) : 0;
+    const s2Per = h.secondary_swell_wave_period  ? (h.secondary_swell_wave_period[noon] || 0) : 0;
+    const s2Dirs   = sampleIdxs.map(idx => h.secondary_swell_wave_direction?.[idx] || 0);
     const s2DirAvg = s2Ht > 0.2 ? circularMean(s2Dirs) : 0;
+    return {
+      s1Ht:  m.daily.swell_wave_height_max[i]  || 0,
+      s1Dir: s1DirAvg,
+      s1Per: m.daily.swell_wave_period_max[i]  || 10,
+      s2Ht, s2Dir: s2DirAvg, s2Per
+    };
+  }
 
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(marineSW.daily.time[i] + 'T12:00:00-07:00');
+    const base = i * 24;
     const wh   = wind.hourly;
+    const noon = base + 12;
     const wNoon = { spd: wh.windspeed_10m[noon] || 0, dir: wh.winddirection_10m[noon] || 0 };
+
+    // swSwell: buoy 46251 coords — Marmetta & Yellow Banks
+    // chSwell: buoy 46053 coords — Chinese Harbor
+    const swSwell = extractSwell(marineSW, i);
+    const chSwell = extractSwell(marineCH, i);
 
     days.push({
       date,
       label: dayLabel(date, i),
-      s1Ht:  marine.daily.swell_wave_height_max[i] || 0,
-      s1Dir: s1DirAvg,
-      s1Per: marine.daily.swell_wave_period_max[i] || 10,
-      s2Ht, s2Dir: s2DirAvg, s2Per,
+      swSwell,
+      chSwell,
+      // Flat legacy fields default to SW swell
+      s1Ht: swSwell.s1Ht, s1Dir: swSwell.s1Dir, s1Per: swSwell.s1Per,
+      s2Ht: swSwell.s2Ht, s2Dir: swSwell.s2Dir, s2Per: swSwell.s2Per,
       windSpd: wNoon.spd, windDir: wNoon.dir
     });
   }
   return days;
+}
+
+// Return the correct swell object for a given spot from a day
+function swellForSpot(d, spotKey) {
+  return SPOTS[spotKey].buoyRef === '46053' ? d.chSwell : d.swSwell;
 }
 
 // ── NWS ALERTS ────────────────────────────────────────────────────────────────
@@ -258,11 +311,12 @@ function parseNWS(nws) {
 // ── EMAIL BUILDER ─────────────────────────────────────────────────────────────
 function buildEmail(days, alerts) {
 
-  // Score every spot for every day
+  // Score every spot for every day using the correct per-spot swell source
   const scored = days.map(d => {
     const out = {};
     for (const key of Object.keys(SPOTS)) {
-      const we = estimateWaveFace(d.s1Ht, d.s1Dir, d.s1Per, d.s2Ht, d.s2Dir, d.s2Per, key);
+      const dsw = swellForSpot(d, key);
+      const we = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, key);
       out[key] = { we, r: scoreSpot(key, we, d.windSpd, d.windDir) };
     }
     return out;
