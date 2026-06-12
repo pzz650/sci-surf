@@ -362,7 +362,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
   </div>
 
   <footer>
-    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · Open Pacific 32.7°N (S/SW) · NDBC 46053 (CH)</span>
+    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · Open Pacific 33.1°N (S/SW) · NDBC 46053 (CH)</span>
     <button class="refresh-btn" onclick="init()">↺ Refresh</button>
   </footer>
 </div>
@@ -372,13 +372,13 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
 const SPOTS = {
   marmetta: {
     name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
-    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.45,
+    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.25,
     notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
     name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
     pointIdeal:[175,195], bowlWindow:[196,215],
-    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.40,
+    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.22,
     notes:'Two-mode spot. Point fires on true S 175–195° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
   },
   chinese: {
@@ -508,7 +508,7 @@ function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
   else if (faceFt < 9.0) label = 'Head–Overhead';
   else                   label = 'Overhead+';
 
-  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer), dominantDir: h1c >= h2c ? s1Dir : s2Dir };
+  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer), dominantDir: h1c >= h2c ? s1Dir : s2Dir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
 }
 
 // ── SCORING ───────────────────────────────────────────────
@@ -524,12 +524,17 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   // ── Yellow Banks two-mode scoring ────────────────────────
   if (spot === 'yellowbanks') {
     const sp = SPOTS['yellowbanks'];
-    const swellDir = waveEst.dominantDir !== undefined ? waveEst.dominantDir : null;
 
-    // Determine mode from dominant swell direction if available
-    const pointMode = swellDir !== null && swellDir >= sp.pointIdeal[0] && swellDir <= sp.pointIdeal[1];
-    const bowlMode  = swellDir !== null && swellDir >= sp.bowlWindow[0]  && swellDir <= sp.bowlWindow[1];
+    // Check BOTH swell components independently — either one in the window qualifies.
+    // We don't care which component is "dominant"; if either is in range, the spot fires.
+    const dirs = [waveEst.s1Dir, waveEst.s2Dir].filter(d => d > 0);
+    const inPoint = d => d >= sp.pointIdeal[0] && d <= sp.pointIdeal[1];
+    const inBowl  = d => d >= sp.bowlWindow[0]  && d <= sp.bowlWindow[1];
+    const pointMode = dirs.some(inPoint);
+    const bowlMode  = !pointMode && dirs.some(inBowl);
     const ybMode    = pointMode ? 'point' : (bowlMode ? 'bowl' : null);
+    // dominantDir still used for display/labeling only
+    const swellDir = waveEst.dominantDir !== undefined ? waveEst.dominantDir : null;
 
     if (pointMode) {
       reasons.push(`Point mode — true S ${Math.round(swellDir)}° ${dirName(swellDir)}`);
@@ -595,21 +600,20 @@ let currentSpot='marmetta', appDays=null, nwsAlerts=[], selDay=0, chartInst=null
 
 // ── DATA FETCH ────────────────────────────────────────────
 async function fetchAll() {
-  // ── S/SW swell — queried at open Pacific (32.7°N 119.7°W)
-  // Well south of SCI, full open-ocean exposure to S/SW swell.
-  // Captures arriving swell height before the island intercepts it —
-  // the correct reference for south-facing spots on SCI's outer coast.
-  // (Prior point 46251 at 33.769°N sits inside the Santa Cruz Basin and reads attenuated.)
+  // ── S/SW swell — queried at open Pacific (33.1°N 119.7°W)
+  // South of SCI, outside the Santa Cruz Basin, full open-ocean S/SW exposure.
+  // Slightly north of prior 32.7°N point to avoid overcounting pre-island swell;
+  // still well clear of the basin attenuation seen at 46251 (33.769°N).
   const marineSWURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=32.7&longitude=-119.7' +
+    '?latitude=33.1&longitude=-119.7' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
   const marineSW2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=32.7&longitude=-119.7' +
+    '?latitude=33.1&longitude=-119.7' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
