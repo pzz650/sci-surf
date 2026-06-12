@@ -12,12 +12,12 @@ const SPOTS = {
   marmetta: {
     name: 'Marmetta', beachNormal: 195, swellDirs: [165, 255], ideal: [190, 235],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 10, minHt: 2.0, waveMultiplier: 1.25,
+    minPeriod: 10, minHt: 2.0, waveMultiplier: 1.45,
   },
   yellowbanks: {
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [168, 215], ideal: [175, 195],
     pointIdeal: [175, 195], bowlWindow: [196, 215],
-    minPeriod: 13, minHt: 2.8, waveMultiplier: 1.35,
+    minPeriod: 13, minHt: 2.8, waveMultiplier: 1.40,
   },
   chinese: {
     name: 'Chinese Harbor', beachNormal: 340, swellDirs: [278, 340], ideal: [285, 318],
@@ -156,18 +156,21 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 async function fetchAll() {
-  // ── S/SW swell — queried at buoy 46251 (Santa Cruz Basin, 33.769°N 119.565°W)
-  // Reference buoy for Marmetta & Yellow Banks. Full southern Pacific exposure.
+  // ── S/SW swell — queried at open Pacific (32.7°N 119.7°W)
+  // Well south of SCI, full open-ocean exposure to S/SW swell.
+  // Captures arriving swell height before the island intercepts it —
+  // the correct reference for south-facing spots on SCI's outer coast.
+  // (Prior point 46251 at 33.769°N sits inside the Santa Cruz Basin and reads attenuated.)
   const marineSWURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.769&longitude=-119.565' +
+    '?latitude=32.7&longitude=-119.7' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
   const marineSW2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.769&longitude=-119.565' +
+    '?latitude=32.7&longitude=-119.7' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 

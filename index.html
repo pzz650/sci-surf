@@ -343,7 +343,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
       <div>
         <div class="buoy-name">Santa Cruz Island South <span style="color:var(--pink);font-size:10px">(offline ~45 days)</span></div>
         <div class="buoy-desc">33.821°N 119.708°W · Scripps Waverider · 1,737m deep</div>
-        <div class="buoy-note">Historical calibration reference. Offline — 46251 is active substitute for S/SW swell.</div>
+        <div class="buoy-note">S/SW swell query point moved to open Pacific (32.7°N 119.7°W) — outside the Santa Cruz Basin, full swell exposure. 46251 retained as NDBC reference for calibration.</div>
       </div>
     </div>
     <div class="buoy-row">
@@ -362,7 +362,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
   </div>
 
   <footer>
-    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · NDBC 46251 + 46053</span>
+    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · Open Pacific 32.7°N (S/SW) · NDBC 46053 (CH)</span>
     <button class="refresh-btn" onclick="init()">↺ Refresh</button>
   </footer>
 </div>
@@ -372,13 +372,13 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
 const SPOTS = {
   marmetta: {
     name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
-    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.25,
+    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.45,
     notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
     name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
     pointIdeal:[175,195], bowlWindow:[196,215],
-    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.35,
+    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.40,
     notes:'Two-mode spot. Point fires on true S 175–195° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
   },
   chinese: {
@@ -595,19 +595,21 @@ let currentSpot='marmetta', appDays=null, nwsAlerts=[], selDay=0, chartInst=null
 
 // ── DATA FETCH ────────────────────────────────────────────
 async function fetchAll() {
-  // ── S/SW swell — queried at buoy 46251 (Santa Cruz Basin, 33.769°N 119.565°W)
-  // This is the reference buoy for Marmetta & Yellow Banks.
-  // Full southern Pacific exposure, south of SCI, unobstructed by island shadow.
+  // ── S/SW swell — queried at open Pacific (32.7°N 119.7°W)
+  // Well south of SCI, full open-ocean exposure to S/SW swell.
+  // Captures arriving swell height before the island intercepts it —
+  // the correct reference for south-facing spots on SCI's outer coast.
+  // (Prior point 46251 at 33.769°N sits inside the Santa Cruz Basin and reads attenuated.)
   const marineSWURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.769&longitude=-119.565' +
+    '?latitude=32.7&longitude=-119.7' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
   const marineSW2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.769&longitude=-119.565' +
+    '?latitude=32.7&longitude=-119.7' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
