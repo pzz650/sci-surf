@@ -555,9 +555,9 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
       else if (faceFt >= 2.5) { sc += 18; reasons.push(`~${faceFt}ft — marginal bowl`); }
       else                     { sc += 0;  reasons.push('Flat — too small for bowl'); }
     } else {
-      // Outside window entirely — flat
+      // Outside window entirely — direction gap, spot won't fire
       reasons.push('Swell outside Yellow Banks window — likely flat');
-      return {stars:1, go:'nogo', score:5, reasons, ybMode: null};
+      return {stars:1, go:'nogo', score:5, faceFt:0, reasons, ybMode: null};
     }
 
     // Wind (same for both modes)
@@ -796,7 +796,8 @@ function render(spot, days) {
   badge.textContent = rating.go==='go'?'GO':rating.go==='nogo'?'NO GO':'MAYBE';
 
   // Wave face
-  document.getElementById('wave-face').textContent = `~${waveEst.faceFt}ft`;
+  const displayFt = 'faceFt' in rating ? rating.faceFt : waveEst.faceFt;
+  document.getElementById('wave-face').textContent = `~${displayFt}ft`;
   document.getElementById('wave-face-desc').textContent =
     `${waveEst.label} — ${mToFt(sw.s1Ht)}ft @ ${Math.round(sw.s1Per)}s ${dirName(sw.s1Dir)}` +
     (sw.s2Ht > 0.2 ? ` + ${mToFt(sw.s2Ht)}ft @ ${Math.round(sw.s2Per)}s ${dirName(sw.s2Dir)}` : '') +
@@ -884,7 +885,7 @@ function render(spot, days) {
     div.innerHTML=`
       <div class="day-name">${dd.dayName}</div>
       <div style="font-size:9px;margin-bottom:3px">${starsHtml(rr.stars,9)}</div>
-      <div class="day-ht">~${we.faceFt}<span>ft</span></div>
+      <div class="day-ht">~${'faceFt' in rr ? rr.faceFt : we.faceFt}<span>ft</span></div>
       <div class="day-wind">${wkt<2?'calm':wkt+'kt'}</div>
       ${warnHtml}
       <div class="day-dot ${rr.go}"></div>`;

@@ -106,7 +106,7 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
     const pointMode = dirs.some(inPoint);
     const bowlMode  = !pointMode && dirs.some(inBowl);
 
-    if (!pointMode && !bowlMode) return { stars: 1, go: 'nogo', score: 5 };
+    if (!pointMode && !bowlMode) return { stars: 1, go: 'nogo', score: 5, faceFt: 0 };
 
     if (pointMode) {
       if      (faceFt >= 7.0) sc += 65;
@@ -338,7 +338,8 @@ function buildEmail(days, alerts) {
       .map(([key]) => {
         const { we, r } = scored[i][key];
         const mode = r.ybMode ? ` (${r.ybMode})` : '';
-        return `${SPOTS[key].name}${mode} — ~${we.faceFt}ft ${starsStr(r.stars)}`;
+        const displayFt = 'faceFt' in r ? r.faceFt : we.faceFt;
+        return `${SPOTS[key].name}${mode} — ~${displayFt}ft ${starsStr(r.stars)}`;
       });
     if (goSpots.length) goDays.push({ label: d.label, spots: goSpots });
   });
