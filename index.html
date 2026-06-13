@@ -349,8 +349,8 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
     <div class="buoy-row">
       <div><div class="buoy-id">46053</div></div>
       <div>
-        <div class="buoy-name">East Santa Barbara Channel</div>
-        <div class="buoy-desc">34.241°N 119.839°W · 12NM SW of SB · Active</div>
+        <div class="buoy-name">Harvest (46218)</div>
+        <div class="buoy-desc">34.448°N 120.779°W · Open Pacific W of Pt Conception · Active</div>
         <div class="buoy-note">NDBC calibration reference for Chinese Harbor. NW swell query point moved to near 46218 Harvest (34.448°N 120.779°W) — open Pacific west of Pt Conception, unobstructed NW swell exposure.</div>
       </div>
     </div>
@@ -371,9 +371,9 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
 // ── SPOT DEFINITIONS ─────────────────────────────────────
 const SPOTS = {
   marmetta: {
-    name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
+    name:'Marmetta', beachNormal:195, swellDirs:[165,262], ideal:[190,235],
     minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.05,
-    notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
+    notes:'S/SW 165–262°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
     name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
@@ -508,7 +508,7 @@ function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
   else if (faceFt < 9.0) label = 'Head–Overhead';
   else                   label = 'Overhead+';
 
-  return { faceFt: faceFt.toFixed(1), label, blendedPer: Math.round(blendedPer), dominantDir: h1c >= h2c ? s1Dir : s2Dir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
+  return { faceFt: Math.round(faceFt), label, blendedPer: Math.round(blendedPer), dominantDir: h1c >= h2c ? s1Dir : s2Dir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
 }
 
 // ── SCORING ───────────────────────────────────────────────

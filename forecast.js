@@ -10,7 +10,7 @@ const FROM_EMAIL     = process.env.FROM_EMAIL;
 // ── SPOT DEFINITIONS (keep in sync with index.html) ──────────────────────────
 const SPOTS = {
   marmetta: {
-    name: 'Marmetta', beachNormal: 195, swellDirs: [165, 255], ideal: [190, 235],
+    name: 'Marmetta', beachNormal: 195, swellDirs: [165, 262], ideal: [190, 235],
     pointIdeal: null, bowlWindow: null,
     minPeriod: 10, minHt: 2.0, waveMultiplier: 1.05,
   },
@@ -84,7 +84,7 @@ function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
   const periodFactor = 0.7 + (Math.min(blendedPer, 22) / 22) * 0.8;
   const faceFt = combinedM * 3.28084 * periodFactor * sp.waveMultiplier;
   const dominantDir = h1c >= h2c ? s1Dir : s2Dir;
-  return { faceFt: faceFt.toFixed(1), blendedPer: Math.round(blendedPer), dominantDir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
+  return { faceFt: Math.round(faceFt), blendedPer: Math.round(blendedPer), dominantDir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
 }
 
 // ── SCORING ───────────────────────────────────────────────────────────────────
