@@ -16,7 +16,7 @@ const SPOTS = {
   },
   yellowbanks: {
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [168, 215], ideal: [175, 195],
-    pointIdeal: [175, 195], bowlWindow: [196, 215],
+    pointIdeal: [175, 188], bowlWindow: [196, 215],
     minPeriod: 13, minHt: 2.8, waveMultiplier: 1.05,
   },
   chinese: {

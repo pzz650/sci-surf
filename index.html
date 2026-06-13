@@ -333,7 +333,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
     <div class="buoy-row">
       <div><div class="buoy-id">46251</div></div>
       <div>
-        <div class="buoy-name">Santa Cruz Basin</div>
+        <div class="buoy-name">Santa Cruz Basin (46251)</div>
         <div class="buoy-desc">33.769°N 119.565°W · South of SCI · Active</div>
         <div class="buoy-note">Primary S/SW swell reference for Marmetta &amp; Yellow Banks. Full southern Pacific exposure, unobstructed by island shadow.</div>
       </div>
@@ -341,7 +341,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
     <div class="buoy-row">
       <div><div class="buoy-id offline">46249</div></div>
       <div>
-        <div class="buoy-name">Santa Cruz Island South <span style="color:var(--pink);font-size:10px">(offline ~45 days)</span></div>
+        <div class="buoy-name">Santa Cruz Island South (46249) <span style="color:var(--pink);font-size:10px">(offline ~45 days)</span></div>
         <div class="buoy-desc">33.821°N 119.708°W · Scripps Waverider · 1,737m deep</div>
         <div class="buoy-note">S/SW swell query point at open Pacific (33.1°N 119.7°W) — outside the Santa Cruz Basin, full swell exposure. 46251 retained as NDBC reference for calibration.</div>
       </div>
@@ -377,9 +377,9 @@ const SPOTS = {
   },
   yellowbanks: {
     name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
-    pointIdeal:[175,195], bowlWindow:[196,215],
+    pointIdeal:[175,188], bowlWindow:[196,215],
     minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.05,
-    notes:'Two-mode spot. Point fires on true S 175–195° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
+    notes:'Two-mode spot. Point fires on true S 175–188° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
   },
   chinese: {
     name:'Chinese Harbor', beachNormal:340, swellDirs:[278,340], ideal:[285,318],
