@@ -910,14 +910,15 @@ function renderChart(days, spot) {
   const labels  = days.map(d=>d.dayName);
   const heights = days.map(d=>{
     const dsw = swellForSpot(d, spot);
-    const we = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, spot);
-    const val = parseFloat(we.faceFt);
+    const we  = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, spot);
+    const rr  = scoreSpot(spot, we, d.windSpd, d.windDir);
+    const val = 'faceFt' in rr ? rr.faceFt : parseFloat(we.faceFt);
     return val < 0.1 ? 0.15 : val;
   });
   const colors = days.map(d=>{
     const dsw = swellForSpot(d, spot);
-    const we = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, spot);
-    const rr = scoreSpot(spot, we, d.windSpd, d.windDir);
+    const we  = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, spot);
+    const rr  = scoreSpot(spot, we, d.windSpd, d.windDir);
     return rr.go==='go'?'#4ecdc4':rr.go==='maybe'?'#e8c84a':'#d46fa0';
   });
   chartInst = new Chart(document.getElementById('swellChart'),{
@@ -938,7 +939,9 @@ function renderChart(days, spot) {
             const d=days[ctx.dataIndex];
             const dsw=swellForSpot(d,spot);
             const we=estimateWaveFace(dsw.s1Ht,dsw.s1Dir,dsw.s1Per,dsw.s2Ht,dsw.s2Dir,dsw.s2Per,spot);
-            return `~${ctx.raw}ft face · ${we.label} · ${we.blendedPer}s blended`;
+            const rr=scoreSpot(spot,we,d.windSpd,d.windDir);
+            const ft='faceFt' in rr ? rr.faceFt : ctx.raw;
+            return `~${ft}ft face · ${we.label} · ${we.blendedPer}s blended`;
           }}
         }
       },
