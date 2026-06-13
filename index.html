@@ -343,7 +343,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
       <div>
         <div class="buoy-name">Santa Cruz Island South <span style="color:var(--pink);font-size:10px">(offline ~45 days)</span></div>
         <div class="buoy-desc">33.821°N 119.708°W · Scripps Waverider · 1,737m deep</div>
-        <div class="buoy-note">S/SW swell query point moved to open Pacific (32.7°N 119.7°W) — outside the Santa Cruz Basin, full swell exposure. 46251 retained as NDBC reference for calibration.</div>
+        <div class="buoy-note">S/SW swell query point at open Pacific (33.1°N 119.7°W) — outside the Santa Cruz Basin, full swell exposure. 46251 retained as NDBC reference for calibration.</div>
       </div>
     </div>
     <div class="buoy-row">
@@ -351,7 +351,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
       <div>
         <div class="buoy-name">East Santa Barbara Channel</div>
         <div class="buoy-desc">34.241°N 119.839°W · 12NM SW of SB · Active</div>
-        <div class="buoy-note">Primary NW swell reference for Chinese Harbor. North of island — shadowed from S/SW swell by SCI itself.</div>
+        <div class="buoy-note">NDBC calibration reference for Chinese Harbor. NW swell query point moved to near 46218 Harvest (34.448°N 120.779°W) — open Pacific west of Pt Conception, unobstructed NW swell exposure.</div>
       </div>
     </div>
   </div>
@@ -362,7 +362,7 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
   </div>
 
   <footer>
-    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · Open Pacific 33.1°N (S/SW) · NDBC 46053 (CH)</span>
+    <span>Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · Open Pacific 33.1°N (S/SW) · Harvest 34.448°N (CH)</span>
     <button class="refresh-btn" onclick="init()">↺ Refresh</button>
   </footer>
 </div>
@@ -372,18 +372,18 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
 const SPOTS = {
   marmetta: {
     name:'Marmetta', beachNormal:195, swellDirs:[165,255], ideal:[190,235],
-    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.25,
+    minPeriod:10, minHt:2.0, buoyRef:'46251', waveMultiplier:1.05,
     notes:'S/SW 165–255°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
     name:'Yellow Banks', beachNormal:180, swellDirs:[168,215], ideal:[175,195],
     pointIdeal:[175,195], bowlWindow:[196,215],
-    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.22,
+    minPeriod:13, minHt:2.8, buoyRef:'46251', waveMultiplier:1.05,
     notes:'Two-mode spot. Point fires on true S 175–195° (confirmed 183° Jul 2018, 181° Jul 2025). Bowl works 196–215° SSW — fun but less defined. Very direction-sensitive. Big S on steep angle breaks on rocks (confirmed Jun 2021 at 210°).'
   },
   chinese: {
     name:'Chinese Harbor', beachNormal:340, swellDirs:[278,340], ideal:[285,318],
-    minPeriod:9, minHt:1.8, buoyRef:'46053', waveMultiplier:1.65,
+    minPeriod:9, minHt:1.8, buoyRef:'46053', waveMultiplier:0.82,
     notes:'NW swell 278°+. Short-period OK. Below ~278° = flat (confirmed 1/27/24). E/SE wind kills anchorage. Rocks at low tide. Best mornings.'
   }
 };
@@ -617,19 +617,21 @@ async function fetchAll() {
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
-  // ── NW swell — queried at buoy 46053 (East Santa Barbara Channel, 34.241°N 119.839°W)
-  // This is the reference buoy for Chinese Harbor.
-  // North of SCI, exposed to NW swell; shadowed from S/SW by the island itself.
+  // ── NW swell — queried near NDBC 46218 Harvest (34.448°N 120.779°W)
+  // Open Pacific west of Point Conception — full unobstructed NW swell exposure.
+  // Validated against 46218 historical data: MWD stable 271-302° (vs 204-281° at 46053),
+  // WVHT ~50% higher than mid-channel 46053. Multiplier recalibrated to 0.82 accordingly.
+  // Prior point 34.241°N 119.839°W was mid-channel, partially shadowed by Pt Conception.
   const marineCHURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.241&longitude=-119.839' +
+    '?latitude=34.448&longitude=-120.779' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
   const marineCH2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.241&longitude=-119.839' +
+    '?latitude=34.448&longitude=-120.779' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 

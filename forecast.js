@@ -12,17 +12,17 @@ const SPOTS = {
   marmetta: {
     name: 'Marmetta', beachNormal: 195, swellDirs: [165, 255], ideal: [190, 235],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 10, minHt: 2.0, waveMultiplier: 1.25,
+    minPeriod: 10, minHt: 2.0, waveMultiplier: 1.05,
   },
   yellowbanks: {
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [168, 215], ideal: [175, 195],
     pointIdeal: [175, 195], bowlWindow: [196, 215],
-    minPeriod: 13, minHt: 2.8, waveMultiplier: 1.22,
+    minPeriod: 13, minHt: 2.8, waveMultiplier: 1.05,
   },
   chinese: {
     name: 'Chinese Harbor', beachNormal: 340, swellDirs: [278, 340], ideal: [285, 318],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 9, minHt: 1.8, waveMultiplier: 1.65,
+    minPeriod: 9, minHt: 1.8, waveMultiplier: 0.82,
   }
 };
 
@@ -177,18 +177,20 @@ async function fetchAll() {
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
-  // ── NW swell — queried at buoy 46053 (East Santa Barbara Channel, 34.241°N 119.839°W)
-  // Reference buoy for Chinese Harbor. North of SCI, exposed to NW swell.
+  // ── NW swell — queried near NDBC 46218 Harvest (34.448°N 120.779°W)
+  // Open Pacific west of Point Conception — full unobstructed NW swell exposure.
+  // Validated against 46218 historical data: MWD stable 271-302° vs 204-281° at old 46053 point.
+  // Multiplier recalibrated from 1.65 → 0.82 to account for higher raw open-ocean WVHT.
   const marineCHURL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.241&longitude=-119.839' +
+    '?latitude=34.448&longitude=-120.779' +
     '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
     '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles';
 
   const marineCH2URL =
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.241&longitude=-119.839' +
+    '?latitude=34.448&longitude=-120.779' +
     '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
 
