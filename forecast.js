@@ -16,7 +16,7 @@ const SPOTS = {
   },
   yellowbanks: {
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [168, 215], ideal: [175, 195],
-    pointIdeal: [175, 188], bowlWindow: [196, 215],
+    pointIdeal: [175, 195], bowlWindow: [196, 215],
     minPeriod: 13, minHt: 2.8, waveMultiplier: 1.05,
   },
   chinese: {
@@ -62,6 +62,11 @@ function spotWindCorrection(spot, windSpd, windDir) {
 }
 
 // ── WAVE FACE ESTIMATE ────────────────────────────────────────────────────────
+function inSwellWindow(dir, spotKey) {
+  const [lo, hi] = SPOTS[spotKey].swellDirs;
+  return dir >= lo && dir <= hi;
+}
+
 function angularFactor(swellDir, beachNormal) {
   return Math.max(0, Math.cos((swellDir - beachNormal) * Math.PI / 180));
 }
@@ -76,15 +81,22 @@ function decayFactor(period) {
 function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
   const sp  = SPOTS[spotKey];
   const bn  = sp.beachNormal;
-  const h1c = s1HtM * angularFactor(s1Dir, bn) * decayFactor(s1Per);
-  const h2c = s2HtM > 0.2 ? s2HtM * angularFactor(s2Dir, bn) * decayFactor(s2Per) : 0;
+
+  // Only count a swell if its direction is within the spot's swell window
+  const s1InWindow = inSwellWindow(s1Dir, spotKey);
+  const s2InWindow = s2HtM > 0.2 && inSwellWindow(s2Dir, spotKey);
+
+  const h1c = s1InWindow ? s1HtM * angularFactor(s1Dir, bn) * decayFactor(s1Per) : 0;
+  const h2c = s2InWindow ? s2HtM * angularFactor(s2Dir, bn) * decayFactor(s2Per) : 0;
+
   const combinedM = Math.sqrt(h1c * h1c + h2c * h2c);
   const h1sq = h1c * h1c, h2sq = h2c * h2c, totalSq = h1sq + h2sq;
   const blendedPer = totalSq > 0 ? (h1sq * s1Per + h2sq * s2Per) / totalSq : s1Per;
   const periodFactor = 0.7 + (Math.min(blendedPer, 22) / 22) * 0.8;
   const faceFt = combinedM * 3.28084 * periodFactor * sp.waveMultiplier;
   const dominantDir = h1c >= h2c ? s1Dir : s2Dir;
-  return { faceFt: Math.round(faceFt), blendedPer: Math.round(blendedPer), dominantDir, s1Dir, s2Dir: s2HtM > 0.2 ? s2Dir : 0 };
+  const isBlended = s1InWindow && s2InWindow && h1c > 0.05 && h2c > 0.05;
+  return { faceFt: Math.round(faceFt), blendedPer: Math.round(blendedPer), dominantDir, s1Dir, s1InWindow, s2Dir: s2InWindow ? s2Dir : 0, s2InWindow, isBlended };
 }
 
 // ── SCORING ───────────────────────────────────────────────────────────────────
@@ -106,7 +118,7 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
     const pointMode = dirs.some(inPoint);
     const bowlMode  = !pointMode && dirs.some(inBowl);
 
-    if (!pointMode && !bowlMode) return { stars: 1, go: 'nogo', score: 5, faceFt: 0 };
+    if (!pointMode && !bowlMode) return { stars: 1, go: 'nogo', score: 5 };
 
     if (pointMode) {
       if      (faceFt >= 7.0) sc += 65;
@@ -338,8 +350,7 @@ function buildEmail(days, alerts) {
       .map(([key]) => {
         const { we, r } = scored[i][key];
         const mode = r.ybMode ? ` (${r.ybMode})` : '';
-        const displayFt = 'faceFt' in r ? r.faceFt : we.faceFt;
-        return `${SPOTS[key].name}${mode} — ~${displayFt}ft ${starsStr(r.stars)}`;
+        return `${SPOTS[key].name}${mode} — ~${we.faceFt}ft ${starsStr(r.stars)}`;
       });
     if (goSpots.length) goDays.push({ label: d.label, spots: goSpots });
   });
@@ -428,29 +439,33 @@ function buildEmail(days, alerts) {
 }
 
 // ── SEND EMAIL ────────────────────────────────────────────────────────────────
+// Resend free tier only allows a single `to` address per API call.
+// We loop over recipients and send individually so a list works on free tier.
 async function sendEmail(subject, html) {
-  // Split comma-separated TO_EMAIL into array for multiple recipients
   const recipients = TO_EMAIL.split(',').map(e => e.trim()).filter(Boolean);
+  if (recipients.length === 0) throw new Error('No recipients in TO_EMAIL');
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to:   recipients,
-      subject,
-      html
-    })
-  });
+  for (const recipient of recipients) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to:   recipient,
+        subject,
+        html
+      })
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Resend API error ${res.status}: ${err}`);
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Resend API error ${res.status} for ${recipient}: ${err}`);
+    }
+    console.log(`Email sent to ${recipient}`);
   }
-  return res.json();
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
