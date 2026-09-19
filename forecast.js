@@ -12,17 +12,17 @@ const SPOTS = {
   marmetta: {
     name: 'Marmetta', beachNormal: 195, swellDirs: [165, 262], ideal: [190, 235],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 10, minHt: 2.0, waveMultiplier: 1.05,
+    minPeriod: 10, minHt: 2.0, swellPoint: 'south', coef: 1.25,
   },
   yellowbanks: {
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [168, 215], ideal: [175, 195],
     pointIdeal: [175, 195], bowlWindow: [196, 215],
-    minPeriod: 13, minHt: 2.8, waveMultiplier: 1.05,
+    minPeriod: 13, minHt: 2.8, swellPoint: 'south', coef: 0.85,
   },
   chinese: {
     name: 'Chinese Harbor', beachNormal: 340, swellDirs: [278, 340], ideal: [285, 318],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 9, minHt: 1.8, waveMultiplier: 0.82,
+    minPeriod: 9, minHt: 1.8, swellPoint: 'north', coef: 0.55,
   }
 };
 
@@ -34,15 +34,6 @@ const starsStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 
 const dayLabel = (date, i) => i === 0 ? 'Today' : i === 1 ? 'Tomorrow'
   : date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
-
-function circularMean(dirs) {
-  const valid = dirs.filter(d => d > 0 && d < 999);
-  if (!valid.length) return 0;
-  const sinSum = valid.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
-  const cosSum = valid.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
-  const mean = Math.atan2(sinSum, cosSum) * 180 / Math.PI;
-  return mean < 0 ? mean + 360 : mean;
-}
 
 // ── SPOT WIND CORRECTION ──────────────────────────────────────────────────────
 function spotWindCorrection(spot, windSpd, windDir) {
@@ -61,47 +52,120 @@ function spotWindCorrection(spot, windSpd, windDir) {
   return windSpd;
 }
 
-// ── WAVE FACE ESTIMATE ────────────────────────────────────────────────────────
+// ── WAVE MODEL v2 (Sep 2026) — keep identical in index.html and forecast.js ──
+// Source: NOAA GFS Wave 0.25° via Open-Meteo. Primary, secondary AND tertiary
+// swell partitions all come from this ONE model (v1 mixed two models and never
+// read GFS's primary partition, which is how the 9/11 SSW swell was missed).
+// Each hour: keep partitions inside the spot's swell window, fade out partitions
+// shorter than the spot's minPeriod, weight by approach angle, combine by energy,
+// then convert to breaking face height (Komar–Gaudet) × a per-spot coef.
+// The day's value is the average over SURF_HOURS (morning session window).
+// Marmetta coef set from 4 logged sessions (8/10/24, 7/20/25, 8/2/26, 9/11/26).
+// YB and Chinese coefs are PROVISIONAL until their logged sessions are replayed.
+const SURF_HOURS = [7, 8, 9, 10, 11, 12];
+const CARD_HOUR  = 9;   // hour used for the swell cards / description text
+const PARTITION_KEYS = [
+  ['swell_wave_height',           'swell_wave_direction',           'swell_wave_period'],
+  ['secondary_swell_wave_height', 'secondary_swell_wave_direction', 'secondary_swell_wave_period'],
+  ['tertiary_swell_wave_height',  'tertiary_swell_wave_direction',  'tertiary_swell_wave_period'],
+];
+const MARINE_HOURLY = PARTITION_KEYS.flat().join(',');
+
 function inSwellWindow(dir, spotKey) {
   const [lo, hi] = SPOTS[spotKey].swellDirs;
   return dir >= lo && dir <= hi;
 }
 
-function angularFactor(swellDir, beachNormal) {
-  return Math.max(0, Math.cos((swellDir - beachNormal) * Math.PI / 180));
+// Komar & Gaudet (1973) breaking wave height (m) from deep-water H (m) and period T (s)
+function komarGaudet(Hm, T) {
+  return 0.39 * Math.pow(9.81, 0.2) * Math.pow(T * Hm * Hm, 0.4);
 }
 
-function decayFactor(period) {
-  if (period >= 15) return 0.98;
-  if (period >= 12) return 0.95;
-  if (period >= 10) return 0.92;
-  return 0.88;
+// All swell partitions for one hourly index of an Open-Meteo marine response
+function partitionsAt(hourly, idx) {
+  return PARTITION_KEYS.map(([hk, dk, pk]) => ({
+    ht:  (hourly[hk] && hourly[hk][idx])  || 0,
+    dir: (hourly[dk] && hourly[dk][idx])  || 0,
+    per: (hourly[pk] && hourly[pk][idx])  || 0,
+  })).filter(p => p.ht > 0.05 && p.per > 0);
 }
 
-function estimateWaveFace(s1HtM, s1Dir, s1Per, s2HtM, s2Dir, s2Per, spotKey) {
-  const sp  = SPOTS[spotKey];
-  const bn  = sp.beachNormal;
+// Effective deep-water height (m) this partition delivers to the spot (0 if blocked)
+// 0 at (minPeriod − 2s), ramping to 1 at minPeriod
+function periodRamp(per, spotKey) {
+  const minP = SPOTS[spotKey].minPeriod;
+  return Math.min(1, Math.max(0, (per - (minP - 2)) / 2));
+}
 
-  // Only count a swell if its direction is within the spot's swell window
-  const s1InWindow = inSwellWindow(s1Dir, spotKey);
-  const s2InWindow = s2HtM > 0.2 && inSwellWindow(s2Dir, spotKey);
+function partitionContribution(p, spotKey) {
+  const sp = SPOTS[spotKey];
+  if (!inSwellWindow(p.dir, spotKey)) return 0;
+  const angle = Math.sqrt(Math.max(0, Math.cos((p.dir - sp.beachNormal) * Math.PI / 180)));
+  return p.ht * angle * periodRamp(p.per, spotKey);
+}
 
-  const h1c = s1InWindow ? s1HtM * angularFactor(s1Dir, bn) * decayFactor(s1Per) : 0;
-  const h2c = s2InWindow ? s2HtM * angularFactor(s2Dir, bn) * decayFactor(s2Per) : 0;
+function hourWave(parts, spotKey) {
+  let E = 0, ET = 0;
+  const scored = parts.map(p => {
+    const c = partitionContribution(p, spotKey);
+    E += c * c; ET += c * c * p.per;
+    return { ...p, contrib: c, inWindow: inSwellWindow(p.dir, spotKey), ramp: periodRamp(p.per, spotKey) };
+  }).sort((a, b) => (b.contrib - a.contrib) || (b.ht - a.ht));
+  scored.forEach(p => { p.share = E > 0 ? (p.contrib * p.contrib) / E : 0; });   // share of wave energy
+  const per = E > 0 ? ET / E : 0;
+  const faceFt = E > 0 ? komarGaudet(Math.sqrt(E), per) * 3.28084 * SPOTS[spotKey].coef : 0;
+  return { faceFt, per, parts: scored };
+}
 
-  const combinedM = Math.sqrt(h1c * h1c + h2c * h2c);
-  const h1sq = h1c * h1c, h2sq = h2c * h2c, totalSq = h1sq + h2sq;
-  const blendedPer = totalSq > 0 ? (h1sq * s1Per + h2sq * s2Per) / totalSq : s1Per;
-  const periodFactor = 0.7 + (Math.min(blendedPer, 22) / 22) * 0.8;
-  const faceFt = combinedM * 3.28084 * periodFactor * sp.waveMultiplier;
-  const dominantDir = h1c >= h2c ? s1Dir : s2Dir;
-  const isBlended = s1InWindow && s2InWindow && h1c > 0.05 && h2c > 0.05;
-  return { faceFt: Math.round(faceFt), blendedPer: Math.round(blendedPer), dominantDir, s1Dir, s1InWindow, s2Dir: s2InWindow ? s2Dir : 0, s2InWindow, isBlended };
+function faceLabel(ft) {
+  if (ft < 1.5) return 'Flat';
+  if (ft < 2.5) return 'Ankle–Knee';
+  if (ft < 3.5) return 'Knee–Waist';
+  if (ft < 4.5) return 'Waist–Chest';
+  if (ft < 5.5) return 'Chest High';
+  if (ft < 6.5) return 'Chest–Head';
+  if (ft < 7.5) return 'Head High';
+  if (ft < 9.0) return 'Head–Overhead';
+  return 'Overhead+';
+}
+
+// d.swell[point] = 24 hourly partition arrays for that day
+function spotWave(d, spotKey) {
+  const hours = d.swell[SPOTS[spotKey].swellPoint];
+  const hw = SURF_HOURS.map(h => hourWave(hours[h] || [], spotKey));
+  const faceExact = hw.reduce((s, x) => s + x.faceFt, 0) / hw.length;
+
+  // Dominant direction = energy-weighted circular mean of each hour's top in-window partition
+  let sx = 0, sy = 0, perSum = 0, wSum = 0;
+  hw.forEach(x => {
+    const top = x.parts[0];
+    if (top && top.contrib > 0) {
+      const w = top.contrib * top.contrib;
+      sx += w * Math.cos(top.dir * Math.PI / 180);
+      sy += w * Math.sin(top.dir * Math.PI / 180);
+      perSum += x.per * w; wSum += w;
+    }
+  });
+  let dominantDir = wSum > 0 ? Math.atan2(sy, sx) * 180 / Math.PI : 0;
+  if (dominantDir < 0) dominantDir += 360;
+
+  const card = hourWave(hours[CARD_HOUR] || [], spotKey);
+  const contributing = card.parts.filter(p => p.contrib > 0.05);
+  return {
+    faceExact,
+    faceFt: Math.round(faceExact),
+    label: faceLabel(faceExact),
+    blendedPer: wSum > 0 ? Math.round(perSum / wSum) : 0,
+    dominantDir,
+    hasSwell: wSum > 0,
+    cardParts: card.parts,          // all partitions at CARD_HOUR, best-for-this-spot first
+    isBlended: contributing.length > 1,
+  };
 }
 
 // ── SCORING ───────────────────────────────────────────────────────────────────
 function scoreSpot(spot, waveEst, windSpd, windDir) {
-  const faceFt = parseFloat(waveEst.faceFt);
+  const faceFt = Math.round(waveEst.faceExact * 10) / 10;
   const correctedSpd = spotWindCorrection(spot, windSpd, windDir);
   const wkt = msToKt(correctedSpd);
   const offshore = spot === 'chinese' ? (windDir >= 55 && windDir <= 145) : (windDir >= 280 || windDir <= 35);
@@ -111,8 +175,8 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   if (spot === 'yellowbanks') {
     const sp = SPOTS['yellowbanks'];
 
-    // Check BOTH swell components independently — either one in the window qualifies.
-    const dirs = [waveEst.s1Dir, waveEst.s2Dir].filter(d => d > 0);
+    // Mode set by the swell delivering the most energy to YB (v2)
+    const dirs = waveEst.hasSwell ? [waveEst.dominantDir] : [];
     const inPoint = d => d >= sp.pointIdeal[0] && d <= sp.pointIdeal[1];
     const inBowl  = d => d >= sp.bowlWindow[0]  && d <= sp.bowlWindow[1];
     const pointMode = dirs.some(inPoint);
@@ -153,7 +217,7 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   else if (faceFt >= 5.5) sc += 55;
   else if (faceFt >= 4.5) sc += 45;
   else if (faceFt >= 3.5) sc += 35;
-  else if (faceFt >= 3.0) sc += 35;
+  else if (faceFt >= 3.0) sc += 30;
   else if (faceFt >= 2.5) sc += 25;
   else if (faceFt >= 1.5) sc += 12;
   else if (faceFt >= 0.5) sc += 4;
@@ -172,39 +236,15 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
 
 // ── DATA FETCH ────────────────────────────────────────────────────────────────
 async function fetchAll() {
-  // ── S/SW swell — queried at open Pacific (33.1°N 119.7°W)
-  // South of SCI, outside the Santa Cruz Basin, full open-ocean S/SW exposure.
-  // Slightly north of prior 32.7°N point to avoid overcounting pre-island swell;
-  // still well clear of the basin attenuation seen at 46251 (33.769°N).
-  const marineSWURL =
+  // ── Swell: NOAA GFS Wave 0.25° ONLY, all three partitions, hourly (model v2)
+  // S point (33.1°N 119.7°W) → Marmetta & Yellow Banks; N point near NDBC 46218 → Chinese Harbor
+  const marineURL = (lat, lon) =>
     'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.1&longitude=-119.7' +
-    '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
-    '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
-    '&forecast_days=7&timezone=America%2FLos_Angeles';
-
-  const marineSW2URL =
-    'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=33.1&longitude=-119.7' +
-    '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
-    '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
-
-  // ── NW swell — queried near NDBC 46218 Harvest (34.448°N 120.779°W)
-  // Open Pacific west of Point Conception — full unobstructed NW swell exposure.
-  // Validated against 46218 historical data: MWD stable 271-302° vs 204-281° at old 46053 point.
-  // Multiplier recalibrated from 1.65 → 0.82 to account for higher raw open-ocean WVHT.
-  const marineCHURL =
-    'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.448&longitude=-120.779' +
-    '&daily=swell_wave_height_max,swell_wave_direction_dominant,swell_wave_period_max' +
-    '&hourly=swell_wave_height,swell_wave_direction,swell_wave_period' +
-    '&forecast_days=7&timezone=America%2FLos_Angeles';
-
-  const marineCH2URL =
-    'https://marine-api.open-meteo.com/v1/marine' +
-    '?latitude=34.448&longitude=-120.779' +
-    '&hourly=secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period' +
-    '&forecast_days=7&timezone=America%2FLos_Angeles&models=ncep_gfswave025';
+    `?latitude=${lat}&longitude=${lon}` +
+    '&hourly=' + MARINE_HOURLY +
+    '&models=ncep_gfswave025&forecast_days=7&timezone=America%2FLos_Angeles';
+  const marineSWURL = marineURL(33.1, -119.7);
+  const marineCHURL = marineURL(34.448, -120.779);
 
   // ── Wind — mid-channel point unchanged (34.18°N 119.84°W)
   const windURL =
@@ -215,11 +255,9 @@ async function fetchAll() {
 
   const nwsURL = 'https://api.weather.gov/alerts/active?zone=PZZ650';
 
-  const [marineSWRes, marineSW2Res, marineCHRes, marineCH2Res, windRes, nwsRes] = await Promise.all([
+  const [marineSWRes, marineCHRes, windRes, nwsRes] = await Promise.all([
     fetch(marineSWURL),
-    fetch(marineSW2URL).catch(() => null),
     fetch(marineCHURL),
-    fetch(marineCH2URL).catch(() => null),
     fetch(windURL),
     fetch(nwsURL, { headers: { 'Accept': 'application/geo+json' } }).catch(() => null)
   ]);
@@ -231,28 +269,6 @@ async function fetchAll() {
   const marineSW = await marineSWRes.json();
   const marineCH = await marineCHRes.json();
 
-  if (marineSW2Res && marineSW2Res.ok) {
-    try {
-      const m2 = await marineSW2Res.json();
-      if (m2.hourly) {
-        marineSW.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
-        marineSW.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
-        marineSW.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
-      }
-    } catch(e) { /* secondary swell unavailable */ }
-  }
-
-  if (marineCH2Res && marineCH2Res.ok) {
-    try {
-      const m2 = await marineCH2Res.json();
-      if (m2.hourly) {
-        marineCH.hourly.secondary_swell_wave_height    = m2.hourly.secondary_swell_wave_height    || null;
-        marineCH.hourly.secondary_swell_wave_direction = m2.hourly.secondary_swell_wave_direction || null;
-        marineCH.hourly.secondary_swell_wave_period    = m2.hourly.secondary_swell_wave_period    || null;
-      }
-    } catch(e) { /* secondary swell unavailable */ }
-  }
-
   const wind = await windRes.json();
   const nws  = nwsRes && nwsRes.ok ? await nwsRes.json() : null;
   return { marineSW, marineCH, wind, nws };
@@ -263,55 +279,25 @@ function buildDays(raw) {
   const { marineSW, marineCH, wind } = raw;
   const days = [];
 
-  // Helper: extract primary+secondary swell from one marine object for day i
-  function extractSwell(m, i) {
-    const base = i * 24;
-    const h = m.hourly;
-    const sampleIdxs = [8, 10, 12, 14, 16].map(hr => base + hr);
-    const noon = base + 12;
-    const s1Dirs   = sampleIdxs.map(idx => h.swell_wave_direction?.[idx] || 0);
-    const s1DirAvg = circularMean(s1Dirs);
-    const s2Ht  = h.secondary_swell_wave_height ? (h.secondary_swell_wave_height[noon] || 0) : 0;
-    const s2Per = h.secondary_swell_wave_period  ? (h.secondary_swell_wave_period[noon] || 0) : 0;
-    const s2Dirs   = sampleIdxs.map(idx => h.secondary_swell_wave_direction?.[idx] || 0);
-    const s2DirAvg = s2Ht > 0.2 ? circularMean(s2Dirs) : 0;
-    return {
-      s1Ht:  m.daily.swell_wave_height_max[i]  || 0,
-      s1Dir: s1DirAvg,
-      s1Per: m.daily.swell_wave_period_max[i]  || 10,
-      s2Ht, s2Dir: s2DirAvg, s2Per
-    };
-  }
-
   for (let i = 0; i < 7; i++) {
-    const date = new Date(marineSW.daily.time[i] + 'T12:00:00-07:00');
+    const date = new Date(marineSW.hourly.time[i * 24].slice(0, 10) + 'T12:00:00-07:00');
     const base = i * 24;
     const wh   = wind.hourly;
     const noon = base + 12;
     const wNoon = { spd: wh.windspeed_10m[noon] || 0, dir: wh.winddirection_10m[noon] || 0 };
 
-    // swSwell: buoy 46251 coords — Marmetta & Yellow Banks
-    // chSwell: buoy 46053 coords — Chinese Harbor
-    const swSwell = extractSwell(marineSW, i);
-    const chSwell = extractSwell(marineCH, i);
+    // 24 hourly partition lists per point for this day (index = local hour)
+    const hoursOf = m => Array.from({ length: 24 }, (_, hr) => partitionsAt(m.hourly, base + hr));
+    const swell = { south: hoursOf(marineSW), north: hoursOf(marineCH) };
 
     days.push({
       date,
       label: dayLabel(date, i),
-      swSwell,
-      chSwell,
-      // Flat legacy fields default to SW swell
-      s1Ht: swSwell.s1Ht, s1Dir: swSwell.s1Dir, s1Per: swSwell.s1Per,
-      s2Ht: swSwell.s2Ht, s2Dir: swSwell.s2Dir, s2Per: swSwell.s2Per,
+      swell,
       windSpd: wNoon.spd, windDir: wNoon.dir
     });
   }
   return days;
-}
-
-// Return the correct swell object for a given spot from a day
-function swellForSpot(d, spotKey) {
-  return SPOTS[spotKey].buoyRef === '46053' ? d.chSwell : d.swSwell;
 }
 
 // ── NWS ALERTS ────────────────────────────────────────────────────────────────
@@ -335,8 +321,7 @@ function buildEmail(days, alerts) {
   const scored = days.map(d => {
     const out = {};
     for (const key of Object.keys(SPOTS)) {
-      const dsw = swellForSpot(d, key);
-      const we = estimateWaveFace(dsw.s1Ht, dsw.s1Dir, dsw.s1Per, dsw.s2Ht, dsw.s2Dir, dsw.s2Per, key);
+      const we = spotWave(d, key);
       out[key] = { we, r: scoreSpot(key, we, d.windSpd, d.windDir) };
     }
     return out;
@@ -428,7 +413,7 @@ function buildEmail(days, alerts) {
     ${goSection}
 
     <div style="font-size:10px;color:#4a5078;border-top:1px solid rgba(160,120,220,.12);padding-top:12px;line-height:1.8">
-      Open-Meteo Marine (ECMWF WAM) · NWS PZZ650 · NDBC 46251 + 46053
+      Open-Meteo Marine (NOAA GFS Wave) · NWS PZZ650 · model v2
     </div>
 
   </div>
