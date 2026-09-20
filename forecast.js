@@ -22,7 +22,7 @@ const SPOTS = {
   chinese: {
     name: 'Chinese Harbor', beachNormal: 340, swellDirs: [278, 340], ideal: [285, 318],
     pointIdeal: null, bowlWindow: null,
-    minPeriod: 9, minHt: 1.8, swellPoint: 'north', coef: 0.65,
+    minPeriod: 9, minHt: 1.8, swellPoint: 'north', coef: 0.61,
   }
 };
 
@@ -56,16 +56,18 @@ function spotWindCorrection(spot, windSpd, windDir) {
 // Source: NOAA GFS Wave 0.25° via Open-Meteo. Primary, secondary AND tertiary
 // swell partitions all come from this ONE model (v1 mixed two models and never
 // read GFS's primary partition, which is how the 9/11 SSW swell was missed).
-// Each hour: keep partitions inside the spot's swell window, fade out partitions
-// shorter than the spot's minPeriod, weight by approach angle, combine by energy,
+// Each hour: keep partitions inside the spot's swell window (soft edges), weight
+// by approach angle, combine by energy,
 // then convert to breaking face height (Komar–Gaudet) × a per-spot coef.
 // The day's value is the average over SURF_HOURS (morning session window).
 // Sep 2026 revision: partitions are tracked across hours and short dropouts
 // bridged, and the swell-window edges taper over 12 deg instead of cutting hard.
 // Coefs replayed against the GFS archive (Jul 2025-May 2026): Marmetta holds at
 // 1.25 (3 sessions, median 1.25); Chinese raised 0.55 -> 0.65 (3 sessions).
-// wind_wave now read as a 4th partition (see PARTITION_KEYS). Chinese refit on
-// 4 sessions with it included: implied 0.88/0.67/0.47/0.65, median 0.66.
+// Sep 2026: period ramp removed from the height path (double-counted Komar-Gaudet).
+// Refit with it gone — Marmetta 1.25 (3rd independent time), Chinese 0.61 from
+// implied 0.57/0.67/0.47/0.65. Removing the ramp is what made all four Chinese
+// sessions finally agree; 10/12/25 moved from 0.88 into the cluster at 0.57.
 const SURF_HOURS = [7, 8, 9, 10, 11, 12];
 const CARD_HOUR  = 9;   // hour used for the swell cards / description text
 // GFS splits wave energy by whether it is still under active local forcing, NOT
@@ -172,19 +174,31 @@ function partitionsAt(hourly, idx) {
   })).filter(p => p.ht > 0.05 && p.per > 0);
 }
 
-// Effective deep-water height (m) this partition delivers to the spot (0 if blocked)
-// 0 at (minPeriod − 2s), ramping to 1 at minPeriod
-function periodRamp(per, spotKey) {
-  const minP = SPOTS[spotKey].minPeriod;
-  return Math.min(1, Math.max(0, (per - (minP - 2)) / 2));
+// ── RIDEABILITY FLOOR ──────────────────────────────────────────────────
+// Period does NOT reduce wave height. Komar-Gaudet already takes period as an
+// input (face scales with T^0.4), so the old minPeriod ramp penalised short
+// swell twice and reported Chinese as flat on days that were fun to surf.
+// Short-period days are often good; what makes them unpleasant is usually WIND,
+// which the model already scores separately. So the only period term left is a
+// scoring-only floor for energy too short to organise into a face at all.
+// NOT fitted: no logged session runs below 8s. 6s is a physical estimate.
+// Tapered because GFS period readings wobble hour to hour, same as direction.
+const RIDEABLE_PERIOD = 6;     // s — below this, mostly closeout slop
+const FLOOR_TAPER     = 1.5;   // s — width of the taper below it
+
+function rideability(per) {
+  if (per >= RIDEABLE_PERIOD) return 1;
+  if (per <= RIDEABLE_PERIOD - FLOOR_TAPER) return 0;
+  return (per - (RIDEABLE_PERIOD - FLOOR_TAPER)) / FLOOR_TAPER;
 }
 
+// Effective deep-water height (m) this partition delivers to the spot (0 if blocked)
 function partitionContribution(p, spotKey) {
   const sp = SPOTS[spotKey];
   const gate = directionGate(p.dir, spotKey);
   if (gate <= 0) return 0;
   const angle = Math.sqrt(Math.max(0, Math.cos((p.dir - sp.beachNormal) * Math.PI / 180)));
-  return p.ht * angle * gate * periodRamp(p.per, spotKey);
+  return p.ht * angle * gate;
 }
 
 function hourWave(parts, spotKey) {
@@ -193,7 +207,7 @@ function hourWave(parts, spotKey) {
     const c = partitionContribution(p, spotKey);
     E += c * c; ET += c * c * p.per;
     return { ...p, contrib: c, inWindow: inSwellWindow(p.dir, spotKey),
-             gate: directionGate(p.dir, spotKey), ramp: periodRamp(p.per, spotKey) };
+             gate: directionGate(p.dir, spotKey) };
   }).sort((a, b) => (b.contrib - a.contrib) || (b.ht - a.ht));
   scored.forEach(p => { p.share = E > 0 ? (p.contrib * p.contrib) / E : 0; });   // share of wave energy
   const per = E > 0 ? ET / E : 0;
@@ -289,6 +303,9 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
     else if (!offshore && wkt > 18)  sc -= 12;
     else if (!offshore && wkt > 10)  sc -= 4;
 
+    const ride = rideability(waveEst.blendedPer);
+    if (ride < 1 && sc > 0) sc = Math.round(sc * ride);
+
     return {
       stars: sc>=70?5:sc>=55?4:sc>=38?3:sc>=20?2:1,
       go:    sc>=40?'go':sc>=22?'maybe':'nogo',
@@ -311,6 +328,9 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
   else if (wkt < 8)                sc += 10;
   else if (!offshore && wkt > 18)  sc -= 12;
   else if (!offshore && wkt > 10)  sc -= 4;
+
+  const ride = rideability(waveEst.blendedPer);
+  if (ride < 1 && sc > 0) sc = Math.round(sc * ride);
 
   return {
     stars: sc>=70?5:sc>=55?4:sc>=38?3:sc>=20?2:1,
