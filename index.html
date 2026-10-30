@@ -156,6 +156,12 @@ body::before {
 .session-tag { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--bg3); color:var(--lavender); flex-shrink:0; font-family:var(--mono); }
 .session-desc { font-size:11px; color:var(--text2); line-height:1.5; }
 
+/* History download */
+.history { padding:12px 0 16px; border-top:1px solid var(--border); font-size:11px; color:var(--text3); line-height:1.6; }
+.history-btn { background:none; border:1px solid var(--border2); color:var(--lavender); cursor:pointer; font-size:11px; font-family:var(--mono); padding:5px 12px; border-radius:5px; transition:all .15s; margin-right:10px; }
+.history-btn:hover { border-color:var(--aqua-dim); color:var(--aqua); }
+.history-btn:disabled { opacity:.5; cursor:wait; }
+
 /* Footer */
 footer { display:flex; justify-content:space-between; align-items:center; padding-top:14px; border-top:1px solid var(--border); font-size:10px; color:var(--text3); font-family:var(--mono); flex-wrap:wrap; gap:8px; }
 .refresh-btn { background:none; border:1px solid var(--border2); color:var(--text3); cursor:pointer; font-size:11px; font-family:var(--mono); padding:5px 12px; border-radius:5px; transition:all .15s; }
@@ -376,8 +382,13 @@ footer { display:flex; justify-content:space-between; align-items:center; paddin
     <div id="log-body" style="display:none"></div>
   </div>
 
+  <div class="history">
+    <button class="history-btn" id="history-btn" onclick="downloadHistory()">⇩ Model history (CSV)</button>
+    <span id="history-status">Every day since May 2025, all three spots: the current model re-run on archived GFS swell + wind. It shows what this model would have said, not what the site showed at the time.</span>
+  </div>
+
   <footer>
-    <span>Open-Meteo Marine (NOAA GFS Wave) · NWS PZZ650 · Open Pacific 33.1°N (S/SW) · Harvest 34.448°N (CH) · model v2.1</span>
+    <span>Open-Meteo Marine (NOAA GFS Wave) · NWS PZZ650 · Open Pacific 33.1°N (S/SW) · Harvest 34.448°N (CH) · model v2.2</span>
     <button class="refresh-btn" onclick="init()">↺ Refresh</button>
   </footer>
 </div>
@@ -391,13 +402,14 @@ const SPOTS = {
     notes:'S/SW 165–262°. Best mid-tide. Rock near takeoff at low. Afternoon W/NW is common — glass in the mornings.'
   },
   yellowbanks: {
-    // Oct 2026 rework — see YELLOW BANKS MODEL notes in the model section.
+    // Oct 2026 rework + v2.2 (10/18/26) — see YELLOW BANKS MODEL notes in the model section.
     name:'Yellow Banks', beachNormal:180, swellDirs:[140,215], ideal:[165,190],
-    angleModel:     { peak:175, sigmaLo:16, sigmaHi:9, longPeriodWiden:1.5 },
+    angleModel:     { peak:175, sigmaLo:16, sigmaHi:9, longPeriodWiden:3 },
     breakThreshold: { h0:0.20, ramp:0.12 },
-    pointWindow:[176,195],
+    pointWindow:[176,200],
+    tracking:       { fromHour:4, toHour:15, maxBridge:5 },
     minPeriod:13, minHt:2.8, buoyRef:'46251', swellPoint:'south', coef:1.30,
-    notes:'On/off spot — needs enough true-S swell (~165–190°) to break at all; SSW alone rarely works. Point lines up on ~176–195°; bowl takes SSE and big long-period swells. Point breaks on the rocks when huge (4/24/21). Looks best near low tide (not modeled).'
+    notes:'On/off spot — needs enough true-S swell (~165–190°) to break at all; short-period SSW alone rarely works, but long-period (16s+) S–SSW to ~200° lights up the point (10/18/26). Bowl takes SSE. Point breaks on the rocks when huge (4/24/21). Looks best near low tide (not modeled).'
   },
   chinese: {
     name:'Chinese Harbor', beachNormal:340, swellDirs:[278,340], ideal:[285,318],
@@ -453,7 +465,8 @@ const SESSIONS = [
   {date:'2026-08-02',spot:'marmetta',desc:'Maybe 2-3ft, bumpy (arrived 9-9:30; local E wind wrapping Anacapa). Chinese flat, YB super small. GFS: 0.5m @12.5s 187° + 0.2m @16s 221°. 46251 WVHT ~0.95m. v2 model calibration day.'},
   {date:'2026-09-11',spot:'marmetta',desc:'Head high, super fun, clean. YB not much (seen ~7:30–8am on a rising 3–3.5ft tide). GFS: 0.74m @15.3s 218° + 0.36m @11-13s 190°. 46251 swell 0.8-1.1m @15-17s ~207°. v1 called 2ft (missed); v2 calibration day.'},
   {date:'2026-09-27',spot:'marmetta',desc:'Chest to head early/mid morning, ~6ft and getting bigger and steeper as the 5.8ft high tide dropped. Site called 7ft. GFS 1.04m @ 12s 193°.'},
-  {date:'2026-09-27',spot:'yellowbanks',desc:'Point 2–3ft, not much going on. v2 called 5ft. 46251 swell 0.7m @ 11.6s, 186–216° (model had it at 193°). Too little true-S swell.'}
+  {date:'2026-09-27',spot:'yellowbanks',desc:'Point 2–3ft, not much going on. v2 called 5ft. 46251 swell 0.7m @ 11.6s, 186–216° (model had it at 193°). Too little true-S swell.'},
+  {date:'2026-10-18',spot:'yellowbanks',desc:'POINT was the call: chest to head high 8–11:30am, long rides off a steep sneaky takeoff; one 7–8ft set ~10am. Bowl just shorebreak closeouts. Site called ~3ft; v2.1 replay 1.6ft. 46251 swell 1.0–1.3m @ 16.7s, ~192–198°. GFS 0.82m @ 16s 196° + 0.5m @ 12.6s 188° (dropped from GFS output 7–11am). Drove v2.2.'}
 ];
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -483,7 +496,7 @@ function spotWindCorrection(spot, windSpd, windDir) {
   return windSpd;
 }
 
-// ── WAVE MODEL v2.1 (Oct 2026) — keep identical in index.html and forecast.js ──
+// ── WAVE MODEL v2.2 (Oct 2026) — keep identical in index.html and forecast.js ──
 // Source: NOAA GFS Wave 0.25° via Open-Meteo. Primary, secondary AND tertiary
 // swell partitions all come from this ONE model (v1 mixed two models and never
 // read GFS's primary partition, which is how the 9/11 SSW swell was missed).
@@ -505,19 +518,35 @@ function spotWindCorrection(spot, windSpd, windDir) {
 // archive for 7/19, 8/2, 9/11 and 9/27/26.
 // 1. Angle: lopsided curve peaking at 175°. Stays generous toward SSE (7/19/26
 //    was head high to overhead in the bowl on a ~162° buoy / 172° GFS swell) and
-//    drops hard above ~185° (9/27/26 at 193° was 2–3ft; 5/24/26 at 194–198°
-//    flat). The old sqrt(cos) weight gave a 210° swell 93% credit.
-// 2. Long periods widen the high side (sigmaHi × (T/12)^1.5): long-period
-//    swell wraps in from wider angles (4/24/21, 18s from ~188°, biggest ever).
+//    drops hard above ~185° for short/mid periods (9/27/26 at 193° @ 12s was
+//    2–3ft; 5/24/26 at 194–198° flat). The old sqrt(cos) weight gave a 210°
+//    swell 93% credit.
+// 2. Long periods widen the high side: sigmaHi × (T/12)^longPeriodWiden.
+//    v2.2 (10/18/26): exponent 1.5 → 3. 10/18 had 0.82m @ 16s from 196° (buoy
+//    1.0–1.3m @ 16.7s ~195°) and the POINT was chest to head; at 1.5 that swell
+//    got 29% credit and the replay said 1.6ft. At 3 it gets ~62%. 12s swell is
+//    unchanged (9/27 still 2–3ft); 15s+ swell from 210°+ still gets <10% (9/11,
+//    5/24 unchanged). Widths: 12s 9°, 14s 14°, 16s 21°, 18s 30°.
+//    Known counter-case: 8/27/22 (46251 1.10m @ 16.7s ~197°, "YB not doing
+//    much" — seen from Marmetta, tide unknown). If more days like that show up,
+//    this exponent comes back down.
 // 3. Break threshold: YB is on/off. Every good day had ≥~0.5m of true-S swell
 //    at 46251; every flat / "not much" day had ≤~0.43m — SSW alone (even 0.85m
 //    on 9/11/26) does not switch it on. Face height ramps from 0 at an effective
 //    (angle-weighted) height of h0 to full at h0+ramp. Set in GFS terms so
 //    7/19 passes and 9/27, 9/11, 8/2, 5/24 do not.
 // 4. Point/bowl is a label, not a separate height (not enough data yet):
-//    'point' when the dominant swell is ~176–195°, 'bowl' when SSE or SSW.
+//    'point' when the dominant swell is ~176–200°, 'bowl' when SSE (or west of
+//    200°). v2.2 widened 195 → 200: 10/18 at ~196° was all point, bowl closed out.
+// 5. v2.2 tracking: GFS only reports three swell slots and on 10/18 dropped the
+//    0.5m @ 12.6s 188° swell from 7–11am (it was there at 5–6am and noon) in
+//    favour of W/NW slots. YB tracks partitions over 4am–3pm and bridges gaps of
+//    up to 5 hours, so a swell seen before and after the session is kept.
+//    Other spots keep the old 2-hour bridge inside the session window.
 // Not modeled: tide. YB looks best near low tide (6/4/21 worked at ~1ft;
 // 9/11/26 "not much" on a 3–3.5ft rising tide). Log tide with YB sessions.
+// Not fixable here: GFS itself under-called 10/18 (0.82m vs 1.0–1.3m at the
+// buoy), so even v2.2 lands at ~5ft against chest-head with 7–8ft sets.
 const SURF_HOURS = [7, 8, 9, 10, 11, 12];
 const CARD_HOUR  = 9;   // hour used for the swell cards / description text
 // GFS splits wave energy by whether it is still under active local forcing, NOT
@@ -543,7 +572,7 @@ const MARINE_HOURLY = PARTITION_KEYS.flat().join(',');
 // was physically present during it, so it is interpolated back in.
 const TRACK_PER_TOL = 2.5;   // s   — same swell if period within this
 const TRACK_DIR_TOL = 30;    // deg — and direction within this
-const MAX_BRIDGE    = 2;     // hours of dropout we are willing to fill
+const MAX_BRIDGE    = 2;     // hours of dropout we are willing to fill (default)
 
 function angDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 
@@ -553,7 +582,7 @@ function interpDir(a, b, f) {
 }
 
 // hourList: one partition array per hour → same shape with dropouts filled
-function trackPartitions(hourList) {
+function trackPartitions(hourList, maxBridge = MAX_BRIDGE) {
   const tracks = [];
   hourList.forEach((parts, hi) => {
     parts.forEach(p => {
@@ -574,7 +603,7 @@ function trackPartitions(hourList) {
     const hrs = [...t.obs.keys()].sort((a, b) => a - b);
     for (let i = 0; i < hrs.length - 1; i++) {
       const a = hrs[i], b = hrs[i + 1];
-      if (b - a > 1 && b - a <= MAX_BRIDGE + 1) {
+      if (b - a > 1 && b - a <= maxBridge + 1) {
         const pa = t.obs.get(a), pb = t.obs.get(b);
         for (let h = a + 1; h < b; h++) {
           const f = (h - a) / (b - a);
@@ -587,6 +616,17 @@ function trackPartitions(hourList) {
     for (const [h, p] of t.obs) out[h].push(p);
   }
   return out;
+}
+
+// Tracked partitions for SURF_HOURS. Spots with a `tracking` block are tracked
+// over a wider window (fromHour–toHour) with a longer bridge (v2.2, YB only).
+function trackedSessionHours(hours, sp) {
+  const tk = sp.tracking;
+  if (!tk) return trackPartitions(SURF_HOURS.map(h => hours[h] || []));
+  const ctx = [];
+  for (let h = tk.fromHour; h <= tk.toHour; h++) ctx.push(hours[h] || []);
+  const tr = trackPartitions(ctx, tk.maxBridge);
+  return SURF_HOURS.map(h => tr[h - tk.fromHour] || []);
 }
 
 // ── Direction gate ──────────────────────────────────────────────────────────
@@ -703,8 +743,9 @@ function faceLabel(ft) {
 
 // d.swell[point] = 24 hourly partition arrays for that day
 function spotWave(d, spotKey) {
-  const hours = d.swell[SPOTS[spotKey].swellPoint];
-  const tracked = trackPartitions(SURF_HOURS.map(h => hours[h] || []));
+  const sp = SPOTS[spotKey];
+  const hours = d.swell[sp.swellPoint];
+  const tracked = trackedSessionHours(hours, sp);
   const hw = tracked.map(parts => hourWave(parts, spotKey));
   const faceExact = hw.reduce((s, x) => s + x.faceFt, 0) / hw.length;
   const rampAvg   = hw.reduce((s, x) => s + x.ramp, 0) / hw.length;
@@ -777,7 +818,7 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
     const d = waveEst.dominantDir;
     ybMode = (d >= sp.pointWindow[0] && d <= sp.pointWindow[1]) ? 'point' : 'bowl';
     reasons.push(ybMode === 'point'
-      ? `Point mode — true S ${Math.round(d)}° ${dirName(d)}`
+      ? `Point mode — S/SSW ${Math.round(d)}° ${dirName(d)}`
       : `Bowl mode — ${Math.round(d)}° ${dirName(d)}, point likely not lined up`);
   }
   if (spot === 'yellowbanks' && waveEst.hasSwell && waveEst.rampAvg < 0.5) {
@@ -820,22 +861,24 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
 let currentSpot='marmetta', appDays=null, nwsAlerts=[], selDay=0, chartInst=null;
 
 // ── DATA FETCH ────────────────────────────────────────────
+// S point (33.1°N 119.7°W): open Pacific south of SCI — Marmetta & Yellow Banks.
+// N point (34.448°N 120.779°W, near NDBC 46218 Harvest): open NW exposure — Chinese Harbor.
+const SW_PT = [33.1, -119.7], CH_PT = [34.448, -120.779], WIND_PT = [34.18, -119.84];
+
 async function fetchAll() {
   // ── Swell: NOAA GFS Wave 0.25° ONLY, all three partitions, hourly (model v2).
-  // S point (33.1°N 119.7°W): open Pacific south of SCI — Marmetta & Yellow Banks.
-  // N point (34.448°N 120.779°W, near NDBC 46218 Harvest): open NW exposure — Chinese Harbor.
   const marineURL = (lat, lon) =>
     'https://marine-api.open-meteo.com/v1/marine' +
     `?latitude=${lat}&longitude=${lon}` +
     '&hourly=' + MARINE_HOURLY +
     '&models=ncep_gfswave025&forecast_days=7&timezone=America%2FLos_Angeles';
-  const marineSWURL = marineURL(33.1, -119.7);
-  const marineCHURL = marineURL(34.448, -120.779);
+  const marineSWURL = marineURL(...SW_PT);
+  const marineCHURL = marineURL(...CH_PT);
 
   // ── Wind — mid-channel point unchanged (34.18°N 119.84°W)
   const windURL =
     'https://api.open-meteo.com/v1/forecast' +
-    '?latitude=34.18&longitude=-119.84' +
+    `?latitude=${WIND_PT[0]}&longitude=${WIND_PT[1]}` +
     '&hourly=windspeed_10m,winddirection_10m' +
     '&forecast_days=7&timezone=America%2FLos_Angeles&windspeed_unit=ms';
 
@@ -901,6 +944,83 @@ function buildDays(raw) {
   return days;
 }
 
+// ── MODEL HISTORY CSV ─────────────────────────────────────
+// Re-runs the CURRENT model over archived data and downloads one row per day per
+// spot. Swell: Open-Meteo's GFS Wave archive (full 3-partition data starts
+// 2025-04-29; before that only one partition exists, so earlier days would read
+// too small). Wind: Open-Meteo historical-forecast API at the same channel point.
+// Note this is a hindcast — what today's model says about each past day using the
+// model's own analysis data — not a record of what the site displayed back then.
+const HISTORY_START = '2025-05-01';
+
+const ymd = d => d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });   // YYYY-MM-DD
+
+async function fetchHistory(start, end) {
+  const marineURL = ([lat, lon]) =>
+    'https://marine-api.open-meteo.com/v1/marine' +
+    `?latitude=${lat}&longitude=${lon}&hourly=${MARINE_HOURLY}` +
+    `&models=ncep_gfswave025&start_date=${start}&end_date=${end}&timezone=America%2FLos_Angeles`;
+  const windURL =
+    'https://historical-forecast-api.open-meteo.com/v1/forecast' +
+    `?latitude=${WIND_PT[0]}&longitude=${WIND_PT[1]}&hourly=windspeed_10m,winddirection_10m` +
+    `&start_date=${start}&end_date=${end}&timezone=America%2FLos_Angeles&windspeed_unit=ms`;
+  const res = await Promise.all([marineURL(SW_PT), marineURL(CH_PT), windURL].map(u => fetch(u)));
+  res.forEach((r, i) => { if (!r.ok) throw new Error(`History API ${['S swell','N swell','wind'][i]}: ${r.status}`); });
+  const [marineSW, marineCH, wind] = await Promise.all(res.map(r => r.json()));
+  return { marineSW, marineCH, wind };
+}
+
+// Pure function: archived responses → CSV text (all dates in the swell series)
+function historyCSV(raw) {
+  const { marineSW, marineCH, wind } = raw;
+  const idxOf = hourly => { const m = {}; hourly.time.forEach((t, i) => m[t] = i); return m; };
+  const iSW = idxOf(marineSW.hourly), iCH = idxOf(marineCH.hourly), iW = idxOf(wind.hourly);
+  const dates = [...new Set(marineSW.hourly.time.map(t => t.slice(0, 10)))];
+  const hoursFor = (m, idx, date) => Array.from({ length: 24 }, (_, hr) => {
+    const i = idx[`${date}T${String(hr).padStart(2, '0')}:00`];
+    return i == null ? [] : partitionsAt(m.hourly, i);
+  });
+  const q = s => `"${String(s).replace(/"/g, '""')}"`;
+  const rows = [['date','spot','face_ft','label','yb_mode','stars','call','score',
+                 'dominant_dir_deg','period_s','channel_wind_kt','spot_wind_kt','wind_dir',
+                 'swells_9am','model_version'].join(',')];
+  for (const date of dates) {
+    const swell = { south: hoursFor(marineSW, iSW, date), north: hoursFor(marineCH, iCH, date) };
+    const base = iW[`${date}T00:00`];
+    const ws = base == null ? { spd: 0, dir: 0 } : sessionWind(wind.hourly, base);
+    const d = { swell };
+    for (const key of Object.keys(SPOTS)) {
+      const we = spotWave(d, key);
+      const r = scoreSpot(key, we, ws.spd, ws.dir);
+      const sw9 = (swell[SPOTS[key].swellPoint][CARD_HOUR] || [])
+        .map(p => `${mToFt(p.ht)}ft@${Math.round(p.per)}s ${Math.round(p.dir)}°`).join(' + ');
+      rows.push([date, SPOTS[key].name, we.faceExact.toFixed(1), we.label, r.ybMode || '',
+                 r.stars, r.go, r.score, we.hasSwell ? Math.round(we.dominantDir) : '',
+                 we.blendedPer || '', msToKt(ws.spd), msToKt(spotWindCorrection(key, ws.spd, ws.dir)),
+                 dirName(ws.dir), q(sw9), 'v2.2'].join(','));
+    }
+  }
+  return rows.join('\n');
+}
+
+async function downloadHistory() {
+  const btn = document.getElementById('history-btn'), st = document.getElementById('history-status');
+  btn.disabled = true; st.textContent = 'Fetching archive and re-running the model…';
+  try {
+    const end = ymd(new Date(Date.now() - 86400000));       // yesterday
+    const csv = historyCSV(await fetchHistory(HISTORY_START, end));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `sbi-wx-model-history_${HISTORY_START}_to_${end}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    st.textContent = `Downloaded ${csv.split('\n').length - 1} rows (${HISTORY_START} → ${end}).`;
+  } catch (err) {
+    st.textContent = `Could not build history: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ── RENDER ────────────────────────────────────────────────
 function getAlert(dayIdx) {
   if (nwsAlerts.length===0) return null;
@@ -915,7 +1035,7 @@ function render(spot, days) {
   const correctedWindSpd = spotWindCorrection(spot, d.windSpd, d.windDir);
   const correctedWkt     = msToKt(correctedWindSpd);
 
-  // Wave face and scoring (model v2.1)
+  // Wave face and scoring (model v2.2)
   const waveEst = spotWave(d, spot);
   const rating  = scoreSpot(spot, waveEst, d.windSpd, d.windDir);
 
@@ -982,7 +1102,7 @@ function render(spot, days) {
       note.textContent = `✓ Counted · ${pct}% of wave energy — ${Math.round(p.per)}s, shorter than ${sp.name} usually sees`;
     } else {
       card.className = 'swell-card counted';
-      note.textContent = `✓ Counted · ${pct}% of wave energy`;
+      note.textContent = `✓ Counted · ${pct}% of wave energy` + (p.bridged ? ' · filled in (GFS dropped it this hour)' : '');
     }
   };
   [0,1,2].forEach(i => setCard(i+1, parts[i]));
@@ -1129,7 +1249,7 @@ function toggleLog(btn) {
   const body=document.getElementById('log-body');
   const open=body.style.display!=='none';
   body.style.display=open?'none':'block';
-  btn.textContent=(open?'▸':'▾')+'  Session Log — '+SESSIONS.length+' calibration entries';
+  btn.textContent=(open?'▸':'▾')+'  Session Log — '+SESSIONS.length+' calibration entries';
   if (!open&&!body.innerHTML) {
     body.innerHTML=SESSIONS.map(s=>{
       const tag=s.spot==='yellowbanks'?'YB':s.spot==='chinese'?'CH':'Mar';

@@ -14,11 +14,12 @@ const SPOTS = {
     minPeriod: 10, minHt: 2.0, swellPoint: 'south', coef: 1.25,
   },
   yellowbanks: {
-    // Oct 2026 rework — see YELLOW BANKS MODEL notes below.
+    // Oct 2026 rework + v2.2 (10/18/26) — see YELLOW BANKS MODEL notes below.
     name: 'Yellow Banks', beachNormal: 180, swellDirs: [140, 215], ideal: [165, 190],
-    angleModel:     { peak: 175, sigmaLo: 16, sigmaHi: 9, longPeriodWiden: 1.5 },
+    angleModel:     { peak: 175, sigmaLo: 16, sigmaHi: 9, longPeriodWiden: 3 },
     breakThreshold: { h0: 0.20, ramp: 0.12 },
-    pointWindow: [176, 195],
+    pointWindow: [176, 200],
+    tracking:       { fromHour: 4, toHour: 15, maxBridge: 5 },
     minPeriod: 13, minHt: 2.8, swellPoint: 'south', coef: 1.30,
   },
   chinese: {
@@ -51,7 +52,7 @@ function spotWindCorrection(spot, windSpd, windDir) {
   return windSpd;
 }
 
-// ── WAVE MODEL v2.1 (Oct 2026) — keep identical in index.html and forecast.js ──
+// ── WAVE MODEL v2.2 (Oct 2026) — keep identical in index.html and forecast.js ──
 // Source: NOAA GFS Wave 0.25° via Open-Meteo. Primary, secondary AND tertiary
 // swell partitions all come from this ONE model (v1 mixed two models and never
 // read GFS's primary partition, which is how the 9/11 SSW swell was missed).
@@ -73,19 +74,35 @@ function spotWindCorrection(spot, windSpd, windDir) {
 // archive for 7/19, 8/2, 9/11 and 9/27/26.
 // 1. Angle: lopsided curve peaking at 175°. Stays generous toward SSE (7/19/26
 //    was head high to overhead in the bowl on a ~162° buoy / 172° GFS swell) and
-//    drops hard above ~185° (9/27/26 at 193° was 2–3ft; 5/24/26 at 194–198°
-//    flat). The old sqrt(cos) weight gave a 210° swell 93% credit.
-// 2. Long periods widen the high side (sigmaHi × (T/12)^1.5): long-period
-//    swell wraps in from wider angles (4/24/21, 18s from ~188°, biggest ever).
+//    drops hard above ~185° for short/mid periods (9/27/26 at 193° @ 12s was
+//    2–3ft; 5/24/26 at 194–198° flat). The old sqrt(cos) weight gave a 210°
+//    swell 93% credit.
+// 2. Long periods widen the high side: sigmaHi × (T/12)^longPeriodWiden.
+//    v2.2 (10/18/26): exponent 1.5 → 3. 10/18 had 0.82m @ 16s from 196° (buoy
+//    1.0–1.3m @ 16.7s ~195°) and the POINT was chest to head; at 1.5 that swell
+//    got 29% credit and the replay said 1.6ft. At 3 it gets ~62%. 12s swell is
+//    unchanged (9/27 still 2–3ft); 15s+ swell from 210°+ still gets <10% (9/11,
+//    5/24 unchanged). Widths: 12s 9°, 14s 14°, 16s 21°, 18s 30°.
+//    Known counter-case: 8/27/22 (46251 1.10m @ 16.7s ~197°, "YB not doing
+//    much" — seen from Marmetta, tide unknown). If more days like that show up,
+//    this exponent comes back down.
 // 3. Break threshold: YB is on/off. Every good day had ≥~0.5m of true-S swell
 //    at 46251; every flat / "not much" day had ≤~0.43m — SSW alone (even 0.85m
 //    on 9/11/26) does not switch it on. Face height ramps from 0 at an effective
 //    (angle-weighted) height of h0 to full at h0+ramp. Set in GFS terms so
 //    7/19 passes and 9/27, 9/11, 8/2, 5/24 do not.
 // 4. Point/bowl is a label, not a separate height (not enough data yet):
-//    'point' when the dominant swell is ~176–195°, 'bowl' when SSE or SSW.
+//    'point' when the dominant swell is ~176–200°, 'bowl' when SSE (or west of
+//    200°). v2.2 widened 195 → 200: 10/18 at ~196° was all point, bowl closed out.
+// 5. v2.2 tracking: GFS only reports three swell slots and on 10/18 dropped the
+//    0.5m @ 12.6s 188° swell from 7–11am (it was there at 5–6am and noon) in
+//    favour of W/NW slots. YB tracks partitions over 4am–3pm and bridges gaps of
+//    up to 5 hours, so a swell seen before and after the session is kept.
+//    Other spots keep the old 2-hour bridge inside the session window.
 // Not modeled: tide. YB looks best near low tide (6/4/21 worked at ~1ft;
 // 9/11/26 "not much" on a 3–3.5ft rising tide). Log tide with YB sessions.
+// Not fixable here: GFS itself under-called 10/18 (0.82m vs 1.0–1.3m at the
+// buoy), so even v2.2 lands at ~5ft against chest-head with 7–8ft sets.
 const SURF_HOURS = [7, 8, 9, 10, 11, 12];
 const CARD_HOUR  = 9;   // hour used for the swell cards / description text
 // GFS splits wave energy by whether it is still under active local forcing, NOT
@@ -111,7 +128,7 @@ const MARINE_HOURLY = PARTITION_KEYS.flat().join(',');
 // was physically present during it, so it is interpolated back in.
 const TRACK_PER_TOL = 2.5;   // s   — same swell if period within this
 const TRACK_DIR_TOL = 30;    // deg — and direction within this
-const MAX_BRIDGE    = 2;     // hours of dropout we are willing to fill
+const MAX_BRIDGE    = 2;     // hours of dropout we are willing to fill (default)
 
 function angDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
 
@@ -121,7 +138,7 @@ function interpDir(a, b, f) {
 }
 
 // hourList: one partition array per hour → same shape with dropouts filled
-function trackPartitions(hourList) {
+function trackPartitions(hourList, maxBridge = MAX_BRIDGE) {
   const tracks = [];
   hourList.forEach((parts, hi) => {
     parts.forEach(p => {
@@ -142,7 +159,7 @@ function trackPartitions(hourList) {
     const hrs = [...t.obs.keys()].sort((a, b) => a - b);
     for (let i = 0; i < hrs.length - 1; i++) {
       const a = hrs[i], b = hrs[i + 1];
-      if (b - a > 1 && b - a <= MAX_BRIDGE + 1) {
+      if (b - a > 1 && b - a <= maxBridge + 1) {
         const pa = t.obs.get(a), pb = t.obs.get(b);
         for (let h = a + 1; h < b; h++) {
           const f = (h - a) / (b - a);
@@ -155,6 +172,17 @@ function trackPartitions(hourList) {
     for (const [h, p] of t.obs) out[h].push(p);
   }
   return out;
+}
+
+// Tracked partitions for SURF_HOURS. Spots with a `tracking` block are tracked
+// over a wider window (fromHour–toHour) with a longer bridge (v2.2, YB only).
+function trackedSessionHours(hours, sp) {
+  const tk = sp.tracking;
+  if (!tk) return trackPartitions(SURF_HOURS.map(h => hours[h] || []));
+  const ctx = [];
+  for (let h = tk.fromHour; h <= tk.toHour; h++) ctx.push(hours[h] || []);
+  const tr = trackPartitions(ctx, tk.maxBridge);
+  return SURF_HOURS.map(h => tr[h - tk.fromHour] || []);
 }
 
 // ── Direction gate ──────────────────────────────────────────────────────────
@@ -271,8 +299,9 @@ function faceLabel(ft) {
 
 // d.swell[point] = 24 hourly partition arrays for that day
 function spotWave(d, spotKey) {
-  const hours = d.swell[SPOTS[spotKey].swellPoint];
-  const tracked = trackPartitions(SURF_HOURS.map(h => hours[h] || []));
+  const sp = SPOTS[spotKey];
+  const hours = d.swell[sp.swellPoint];
+  const tracked = trackedSessionHours(hours, sp);
   const hw = tracked.map(parts => hourWave(parts, spotKey));
   const faceExact = hw.reduce((s, x) => s + x.faceFt, 0) / hw.length;
   const rampAvg   = hw.reduce((s, x) => s + x.ramp, 0) / hw.length;
@@ -306,7 +335,7 @@ function spotWave(d, spotKey) {
   };
 }
 
-// ── SESSION WIND (Oct 2026) ───────────────────────────────────────────────────
+// ── SESSION WIND (Oct 2026) ───────────────────────────────
 // Scoring used to read the noon wind only. It now uses the average over the
 // morning session hours (SURF_HOURS), so a glassy morning that blows out at
 // noon is scored as the session you would actually surf.
@@ -326,7 +355,7 @@ function sessionWind(wh, base) {
   return { spd: spd / n, dir };
 }
 
-// ── SCORING (keep identical in index.html and forecast.js) ────────────────────
+// ── SCORING (keep identical in index.html and forecast.js) ─
 function scoreSpot(spot, waveEst, windSpd, windDir) {
   const sp = SPOTS[spot];
   const faceFt = Math.round(waveEst.faceExact * 10) / 10;
@@ -345,7 +374,7 @@ function scoreSpot(spot, waveEst, windSpd, windDir) {
     const d = waveEst.dominantDir;
     ybMode = (d >= sp.pointWindow[0] && d <= sp.pointWindow[1]) ? 'point' : 'bowl';
     reasons.push(ybMode === 'point'
-      ? `Point mode — true S ${Math.round(d)}° ${dirName(d)}`
+      ? `Point mode — S/SSW ${Math.round(d)}° ${dirName(d)}`
       : `Bowl mode — ${Math.round(d)}° ${dirName(d)}, point likely not lined up`);
   }
   if (spot === 'yellowbanks' && waveEst.hasSwell && waveEst.rampAvg < 0.5) {
@@ -561,7 +590,7 @@ function buildEmail(days, alerts) {
     ${goSection}
 
     <div style="font-size:10px;color:#4a5078;border-top:1px solid rgba(160,120,220,.12);padding-top:12px;line-height:1.8">
-      Open-Meteo Marine (NOAA GFS Wave) · NWS PZZ650 · model v2.1
+      Open-Meteo Marine (NOAA GFS Wave) · NWS PZZ650 · model v2.2
     </div>
 
   </div>
